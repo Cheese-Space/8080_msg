@@ -1,0 +1,3 @@
+[workspace]
+resolver = "3"
+members = ["libtty_msg","tty_msg", "tty_msg_server"]
