@@ -97,10 +97,20 @@ dependencies = [
 [[package]]
 name = "tty_msg"
 version = "0.1.0"
+dependencies = [
+ "libtty_msg",
+ "serde",
+ "serde_json",
+]
 
 [[package]]
 name = "tty_msg_server"
 version = "0.1.0"
+dependencies = [
+ "libtty_msg",
+ "serde",
+ "serde_json",
+]
 
 [[package]]
 name = "unicode-ident"
