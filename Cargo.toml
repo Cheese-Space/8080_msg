@@ -1,8 +1,9 @@
 [workspace]
 resolver = "3"
-members = ["libtty_msg","tty_msg", "tty_msg_server"]
+members = ["libtty_msg", "tty_msg", "tty_msg_server"]
 
 [workspace.dependencies]
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.150"
-libtty_msg = {path = "libtty_msg"}
+libtty_msg = { path = "libtty_msg" }
+tokio = { version = "1.52.3", features = ["full"] }

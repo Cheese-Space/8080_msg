@@ -1,11 +1,12 @@
 use serde::Serialize;
 use serde::Deserialize;
-use std::io::Write;
-use std::net::TcpStream;
+use tokio::net::TcpStream;
+use tokio::net::tcp::OwnedWriteHalf;
+use tokio::io::AsyncWriteExt;
 use std::io;
 use std::fmt;
 pub type Username = String;
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct Message {
     user: Username,
     msg: String
@@ -21,18 +22,28 @@ impl Message {
         Self { user: user.to_string(), msg: msg.to_string() }
     }
 }
-#[derive(Serialize, Deserialize, Clone, Copy)]
+#[derive(Serialize, Deserialize, Clone, Copy, Debug)]
 pub enum UserPrivelige {
     ReadOnly,
     Normal,
     Admin
 }
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct User {
     name: Username,
     privelige: UserPrivelige
 }
-#[derive(Serialize, Deserialize)]
+impl User {
+    #[inline]
+    pub fn get_username(&self) -> Username {
+        self.name.clone()
+    }
+    #[inline]
+    pub const fn get_privelige(&self) -> UserPrivelige {
+        self.privelige
+    }
+}
+#[derive(Serialize, Deserialize, Debug)]
 pub enum Packet {
     Exit(User),
     Join(User),
@@ -41,7 +52,22 @@ pub enum Packet {
     Msg(Message)
 }
 impl Packet {
-    pub fn send(&self, stream: &mut TcpStream) -> io::Result<()> {
-        writeln!(stream, "{}", serde_json::to_string(self).unwrap())
+    pub async fn send(self, stream: &mut TcpStream) -> io::Result<()> {
+        let data_as_bytes = Vec::from(self);
+        stream.write_all(&data_as_bytes).await
+    }
+    pub async fn send_from_writer(self, stream: &mut OwnedWriteHalf) -> io::Result<()> {
+        let data_as_bytes = Vec::from(self);
+        stream.write_all(&data_as_bytes).await
+    }
+}
+impl From<Packet> for Vec<u8> {
+    fn from(value: Packet) -> Self {
+        let contents = serde_json::to_string(&value).unwrap().as_bytes().to_vec();
+        let mut header = (contents.len() as u32).to_ne_bytes().to_vec();
+        for i in contents {
+            header.push(i);
+        }
+        header
     }
 }
