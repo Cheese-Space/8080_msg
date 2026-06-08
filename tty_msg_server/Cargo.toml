@@ -7,3 +7,4 @@ edition = "2024"
 serde = {workspace = true}
 serde_json = {workspace = true}
 libtty_msg = {workspace = true}
+tokio = { workspace = true }
