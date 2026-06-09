@@ -35,12 +35,17 @@ pub struct User {
 }
 impl User {
     #[inline]
+    #[must_use = "cloning is expensive"]
     pub fn get_username(&self) -> Username {
         self.name.clone()
     }
     #[inline]
     pub const fn get_privelige(&self) -> UserPrivelige {
         self.privelige
+    }
+    #[inline]
+    pub const fn set_privelige(&mut self, privelige: UserPrivelige) {
+        self.privelige = privelige;
     }
 }
 #[derive(Serialize, Deserialize, Debug)]
