@@ -35,11 +35,6 @@ pub struct User {
 }
 impl User {
     #[inline]
-    #[must_use = "cloning is expensive"]
-    pub fn get_username(&self) -> Username {
-        self.name.clone()
-    }
-    #[inline]
     pub const fn get_privelige(&self) -> UserPrivelige {
         self.privelige
     }
@@ -50,10 +45,10 @@ impl User {
 }
 #[derive(Serialize, Deserialize, Debug)]
 pub enum Packet {
-    Exit(User),
-    Join(User),
-    Kick(User),
-    GetPort(User),
+    Exit(Username),
+    Join(Username),
+    Kick {asker: Username, kicked: Username},
+    GetPort(Username),
     Msg(Message)
 }
 impl Packet {
