@@ -1,5 +1,5 @@
 use tokio::{io::
-    {self, AsyncReadExt, AsyncWriteExt}, net::{TcpListener, tcp::OwnedWriteHalf}, sync::oneshot::{self, Sender, error::TryRecvError}, task::JoinHandle};
+    {self, AsyncReadExt, AsyncWriteExt}, net::{TcpListener, tcp::OwnedWriteHalf}, sync::oneshot::{self, Sender, error::TryRecvError}};
 use tokio::sync::mpsc;
 use tokio::sync::Mutex;
 use libtty_msg::*;
@@ -26,17 +26,28 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             match packet {
                 Packet::Exit(u) => {
                     let mut user_book = user_book.lock().await;
-                    let username = u.get_username();
-                    let client = user_book.remove(&username).unwrap();
+                    let client = user_book.remove(&u).unwrap();
                     let _ = client.shutdown.send(());                
                     drop(user_book);
-                    let _ = io::stderr().write(format!("user {username} left\n").as_bytes());
+                    let _ = io::stderr().write(format!("user {u} left\n").as_bytes());
                 }
-                Packet::Join(_) => unreachable!("joining is handeled in de read thread, because we have to know if it is the first request"),
-                Packet::Kick(u) => {
-                    if !matches!(u.get_privelige(), UserPrivelige::Admin) {
-                        
+                Packet::Join(_) => (), // joining is handled in the reader thread
+                Packet::Kick {asker, kicked} => {
+                    let mut user_book  = user_book.lock().await;
+                    let asker = &user_book[&asker];
+                    if !matches!(asker.user.get_privelige(), UserPrivelige::Admin) {
+                        return;
                     }
+                    let kicker = match user_book.remove(&kicked) {
+                        Some(k) => k,
+                        None => return
+                    };
+                    let msg = Packet::Msg(Message::new("server", "you've been kicked!"));
+                    tokio::spawn(async move {
+                        let mut kicker = kicker;
+                        let writer = &mut kicker.stream;
+                        let _ = msg.send_from_writer(writer).await;
+                    });
                 }
                 _ => todo!()
             }
@@ -56,7 +67,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             };
             let tx = tx.clone();
             let user_book = Arc::clone(&user_book);
-            // each connection gets its own thread
+            // each connection gets its own thread could be prone to ddos atacks maybe?
             tokio::spawn(async move {
                 let (mut reader, writer) = connection.into_split(); 
                 let mut size = [0u8; 4];
@@ -73,23 +84,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
                 let data: Packet = serde_json::from_slice(&data).unwrap();
                 // first packet should always be the join request, if not the user won't be registered
-                if let Packet::Join(mut u) = data {
-                    let username = u.get_username();
+                if let Packet::Join(u) = data {
+                    let mut user = User::new(u, None);
                     let mut user_book = user_book.lock().await;
                     if user_book.is_empty() {
-                        u.set_privelige(UserPrivelige::Admin);
+                        user.set_privelige(UserPrivelige::Admin);
                     }
                     let client = Client {
-                        user: u,
+                        user: user,
                         stream: writer,
                         shutdown: shutdown_tx
                     };
-                    if let Some(_) = user_book.get(&username) {
+                    let username = client.user.get_username();
+                    if let Some(_) = user_book.get(username) {
                         drop(user_book);
                         let _ = io::stderr().write("failed to register user\nsame username\n".as_bytes()).await;
                         return
                     }
-                    user_book.insert(username, client);
+                    user_book.insert(username.clone(), client);
                 }
                 else {
                     let _ = io::stderr().write("failed to register user\n".as_bytes()).await;
