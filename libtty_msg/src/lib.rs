@@ -44,9 +44,8 @@ impl User {
         self.privelige = privelige;
     }
     #[inline]
-    pub fn new(username: &str, privelige: Option<UserPrivelige>) -> Self {
+    pub fn new(name: String, privelige: Option<UserPrivelige>) -> Self {
         let privelige = privelige.unwrap_or_default();
-        let name = username.to_string();
         Self { name, privelige }
     }
 }
