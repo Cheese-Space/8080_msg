@@ -22,9 +22,10 @@ impl Message {
         Self { user: user.to_string(), msg: msg.to_string() }
     }
 }
-#[derive(Serialize, Deserialize, Clone, Copy, Debug)]
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, Default)]
 pub enum UserPrivelige {
     ReadOnly,
+    #[default]
     Normal,
     Admin
 }
@@ -41,6 +42,12 @@ impl User {
     #[inline]
     pub const fn set_privelige(&mut self, privelige: UserPrivelige) {
         self.privelige = privelige;
+    }
+    #[inline]
+    pub fn new(username: &str, privelige: Option<UserPrivelige>) -> Self {
+        let privelige = privelige.unwrap_or_default();
+        let name = username.to_string();
+        Self { name, privelige }
     }
 }
 #[derive(Serialize, Deserialize, Debug)]
