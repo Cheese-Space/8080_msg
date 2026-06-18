@@ -44,6 +44,10 @@ impl User {
         self.privelige = privelige;
     }
     #[inline]
+    pub fn get_username(&self) -> &String {
+        &self.name
+    }
+    #[inline]
     pub fn new(name: String, privelige: Option<UserPrivelige>) -> Self {
         let privelige = privelige.unwrap_or_default();
         Self { name, privelige }
