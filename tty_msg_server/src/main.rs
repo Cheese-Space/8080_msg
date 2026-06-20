@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 struct Client {
     user: User,
-    stream: OwnedWriteHalf,
+    stream: Arc<Mutex<OwnedWriteHalf>>,
     shutdown: Sender<()>
 }
 #[tokio::main]
@@ -29,27 +29,29 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     let client = user_book.remove(&u).unwrap();
                     let _ = client.shutdown.send(());                
                     drop(user_book);
-                    let _ = io::stderr().write(format!("user {u} left\n").as_bytes());
+                    let _ = io::stderr().write(format!("user {u} left\n").as_bytes()).await;
                 }
                 Packet::Join(_) => (), // joining is handled in the reader thread
                 Packet::Kick {asker, kicked} => {
                     let mut user_book  = user_book.lock().await;
                     let asker = &user_book[&asker];
                     if !matches!(asker.user.get_privelige(), UserPrivelige::Admin) {
-                        return;
+                        continue;
                     }
                     let kicker = match user_book.remove(&kicked) {
                         Some(k) => k,
                         None => return
                     };
+                    let stream = Arc::clone(&kicker.stream);
+                    let _ = kicker.shutdown.send(());
                     let msg = Packet::Msg(Message::new("server", "you've been kicked!"));
-                    tokio::spawn(async move {
-                        let mut kicker = kicker;
-                        let writer = &mut kicker.stream;
-                        let _ = msg.send_from_writer(writer).await;
-                    });
+                    drop(user_book);
+                    let _ = msg.send_from_writer(&mut *stream.lock().await).await;
                 }
-                _ => todo!()
+                Packet::GetPort(u) => {
+                    
+                }
+                Packet::Msg(_) => todo!()
             }
         }
         // if there are no more users connected, the server shuts down
@@ -92,7 +94,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
                     let client = Client {
                         user: user,
-                        stream: writer,
+                        stream: Arc::new(Mutex::new(writer)),
                         shutdown: shutdown_tx
                     };
                     let username = client.user.get_username();
