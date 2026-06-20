@@ -55,10 +55,9 @@ impl User {
 }
 #[derive(Serialize, Deserialize, Debug)]
 pub enum Packet {
-    Exit(Username),
+    Exit,
     Join(Username),
-    Kick {asker: Username, kicked: Username},
-    GetPort(Username),
+    GetPort,
     Msg(Message)
 }
 impl Packet {
