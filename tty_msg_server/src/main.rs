@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 struct Client {
     user: User,
-    stream: Arc<Mutex<OwnedWriteHalf>>,
+    stream: OwnedWriteHalf,
     shutdown: Sender<()>
 }
 #[tokio::main]
@@ -19,51 +19,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let (shutdown_tx, mut shutdown_rx) = mpsc::channel(1);
     eprintln!("connect to port: {port}");
     let write_user_book = Arc::clone(&user_book);
-    // writer thread
-    tokio::spawn(async move {
-        let user_book = write_user_book;
-        while let Some(packet) = rx.recv().await {
-            match packet {
-                Packet::Exit(u) => {
-                    let mut user_book = user_book.lock().await;
-                    let client = user_book.remove(&u).unwrap();
-                    let _ = client.shutdown.send(());                
-                    drop(user_book);
-                    let _ = io::stderr().write(format!("user {u} left\n").as_bytes()).await;
-                }
-                Packet::Join(_) => (), // joining is handled in the reader thread
-                Packet::Kick {asker, kicked} => {
-                    let mut user_book  = user_book.lock().await;
-                    let asker = &user_book[&asker];
-                    if !matches!(asker.user.get_privelige(), UserPrivelige::Admin) {
-                        continue;
-                    }
-                    let kicker = match user_book.remove(&kicked) {
-                        Some(k) => k,
-                        None => return
-                    };
-                    let stream = Arc::clone(&kicker.stream);
-                    let _ = kicker.shutdown.send(());
-                    let msg = Packet::Msg(Message::new("server", "you've been kicked!"));
-                    drop(user_book);
-                    let _ = msg.send_from_writer(&mut *stream.lock().await).await;
-                }
-                Packet::GetPort(u) => {
-                    
-                }
-                Packet::Msg(_) => todo!()
-            }
-        }
-        // if there are no more users connected, the server shuts down
-        let _ = shutdown_tx.send(());
-    });
     // conection listening thread
     tokio::spawn(async move {
         loop {
             let (connection, _) = match listener.accept().await {
                 Ok(c) => c,
                 Err(_) => {
-                    let _ = io::stderr().write("failed to connect to user\n".as_bytes()).await;
+                    eprintln!("failed to connect to user");
                     return;
                 }
             };
@@ -75,13 +37,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let mut size = [0u8; 4];
                 let (shutdown_tx, mut shutdown_rx) = oneshot::channel::<()>();
                 if let Err(_) = reader.read_exact(&mut size).await {
-                    let _ = io::stderr().write("failed to register user\n".as_bytes()).await;
+                    eprintln!("failed to register user");
                     return;
                 }
                 let size_to_read = u32::from_ne_bytes(size) as usize;
                 let mut data = vec![0u8; size_to_read];
                 if let Err(_) = reader.read_exact(&mut data).await {
-                    let _ = io::stderr().write("failed to register user\n".as_bytes()).await;
+                    eprintln!("failed to register user");
                     return;
                 }
                 let data: Packet = serde_json::from_slice(&data).unwrap();
@@ -99,14 +61,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     };
                     let username = client.user.get_username();
                     if let Some(_) = user_book.get(username) {
-                        drop(user_book);
-                        let _ = io::stderr().write("failed to register user\nsame username\n".as_bytes()).await;
+                        eprintln!("failed to register user");
                         return
                     }
                     user_book.insert(username.clone(), client);
                 }
                 else {
-                    let _ = io::stderr().write("failed to register user\n".as_bytes()).await;
+                    eprintln!("failed to register user");
                     return;
                 }
                 loop {
@@ -115,19 +76,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         Err(TryRecvError::Empty) => ()
                     }
                     if let Err(_) = reader.read_exact(&mut size).await {
-                        let _ = io::stderr().write("failed to read data\n".as_bytes()).await;
+                        eprintln!("failed to register user");
                         continue;
                     }
                     let size = u32::from_ne_bytes(size);
                     let mut data = vec![0u8; size as usize];
                     if let Err(_) = reader.read_exact(&mut data).await {
-                        let _ = io::stderr().write("failed to read data\n".as_bytes()).await;
+                        eprintln!("failed to register user");
                         continue;
                     }
                     let data = String::from_utf8(data).unwrap();
                     let data: Packet = serde_json::from_str(&data).unwrap();
                     if let Err(_) = tx.send(data).await {
-                        let _ = io::stderr().write("failed to send data\n".as_bytes()).await;
+                        eprintln!("failed to register user");
                     }
                 }            
             });
