@@ -24,8 +24,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         loop {
             let (connection, _) = match listener.accept().await {
                 Ok(c) => c,
-                Err(_) => {
-                    eprintln!("failed to connect to user");
+                Err(e) => {
+                    eprintln!("failed to connect to user: {e}");
                     return;
                 }
             };
@@ -42,8 +42,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
                 let size_to_read = u32::from_ne_bytes(size) as usize;
                 let mut data = vec![0u8; size_to_read];
-                if let Err(_) = reader.read_exact(&mut data).await {
-                    eprintln!("failed to register user");
+                if let Err(e) = reader.read_exact(&mut data).await {
+                    eprintln!("failed to register user: {e}");
                     return;
                 }
                 let data: Packet = serde_json::from_slice(&data).unwrap();
@@ -61,13 +61,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     };
                     let username = client.user.get_username();
                     if let Some(_) = user_book.get(username) {
-                        eprintln!("failed to register user");
+                        eprintln!("failed to register user: an user with the same username alreaady exists");
                         return
                     }
                     user_book.insert(username.clone(), client);
                 }
                 else {
-                    eprintln!("failed to register user");
+                    eprintln!("failed to register user: first request wasn't join request`");
                     return;
                 }
                 loop {
