@@ -58,6 +58,7 @@ pub enum Packet {
     Exit,
     Join(Username),
     GetPort,
+    Kick(Username),
     Msg(Message)
 }
 impl Packet {
