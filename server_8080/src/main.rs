@@ -3,22 +3,23 @@ use tokio::{io::
 use tokio::sync::mpsc;
 use tokio::sync::Mutex;
 use lib8080_msg::*;
-use std::collections::HashSet;
+use std::collections::HashMap;
 use std::sync::Arc;
 struct Client {
     user: User,
     stream: OwnedWriteHalf,
     shutdown: Sender<()>
 }
-type UserBook = Arc<Mutex<HashSet<Username>>>;
+type UserBook = Arc<Mutex<HashMap<Username, Client>>>;
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let user_book: UserBook = Arc::new(Mutex::new(HashSet::new()));
+    let user_book: UserBook = Arc::new(Mutex::new(HashMap::new()));
     let listener = TcpListener::bind("0.0.0.0:0").await?;
     let port = listener.local_addr()?.port();
     let (tx, mut rx) = mpsc::channel::<Packet>(100);
     let (shutdown_tx, mut shutdown_rx) = mpsc::channel(1);
     eprintln!("connect to port: {port}");
+    
     let write_user_book = Arc::clone(&user_book);
     // conection listening thread
     tokio::spawn(async move {
