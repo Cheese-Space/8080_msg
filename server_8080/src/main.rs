@@ -7,8 +7,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 struct Client {
     user: User,
-    stream: OwnedWriteHalf,
-    shutdown: Sender<()>
+    stream: OwnedWriteHalf
 }
 type UserBook = Arc<Mutex<HashMap<Username, Client>>>;
 #[tokio::main]
@@ -16,7 +15,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let user_book: UserBook = Arc::new(Mutex::new(HashMap::new()));
     let listener = TcpListener::bind("0.0.0.0:0").await?;
     let port = listener.local_addr()?.port();
-    let (tx, mut rx) = mpsc::channel::<Packet>(100);
     let (shutdown_tx, mut shutdown_rx) = mpsc::channel(1);
     eprintln!("connect to port: {port}");
     let write_user_book = Arc::clone(&user_book);
@@ -37,13 +35,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     return;
                 }
             };
-            let tx = tx.clone();
             let user_book = Arc::clone(&user_book);
             // each connection gets its own thread could be prone to ddos atacks maybe?
             tokio::spawn(async move {
                 let (mut reader, writer) = connection.into_split(); 
                 let mut size = [0u8; 4];
-                let (shutdown_tx, mut shutdown_rx) = oneshot::channel::<()>();
                 if let Err(_) = reader.read_exact(&mut size).await {
                     eprintln!("failed to register user");
                     return;
@@ -65,7 +61,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     let client = Client {
                         user: user,
                         stream: writer,
-                        shutdown: shutdown_tx
                     };
                     let username = client.user.get_username();
                     if let Some(_) = user_book.get(username) {
@@ -79,10 +74,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     return;
                 }
                 loop {
-                    match shutdown_rx.try_recv() {
-                        Ok(_) | Err(TryRecvError::Closed) => return,
-                        Err(TryRecvError::Empty) => ()
-                    }
                     if let Err(_) = reader.read_exact(&mut size).await {
                         eprintln!("failed to register user");
                         continue;
@@ -95,9 +86,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
                     let data = String::from_utf8(data).unwrap();
                     let data: Packet = serde_json::from_str(&data).unwrap();
-                    if let Err(_) = tx.send(data).await {
-                        eprintln!("failed to register user");
-                    }
                 }            
             });
         }
