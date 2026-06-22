@@ -44,7 +44,7 @@ impl User {
         self.privelige = privelige;
     }
     #[inline]
-    pub fn get_username(&self) -> &String {
+    pub fn get_username(&self) -> &str {
         &self.name
     }
     #[inline]
