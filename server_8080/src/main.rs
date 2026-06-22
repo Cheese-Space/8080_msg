@@ -17,7 +17,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let port = listener.local_addr()?.port();
     let (shutdown_tx, mut shutdown_rx) = mpsc::channel(1);
     eprintln!("connect to port: {port}");
-    let write_user_book = Arc::clone(&user_book);
     // control-c handler
     tokio::spawn(async move {
         // bug: program could imedeatly stops if the ctrl_c function fails
@@ -67,25 +66,37 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         eprintln!("failed to register user: an user with the same username alreaady exists");
                         return
                     }
-                    user_book.insert(username.clone(), client);
+                    user_book.insert(username.to_string(), client);
                 }
                 else {
                     eprintln!("failed to register user: first request wasn't join request`");
                     return;
                 }
+                let (tx, mut rx) = mpsc::channel(50);
+                // writer thread
+                tokio::spawn(async move {
+                    while let Some(packet) = rx.recv().await {
+                        
+                    }
+                });
+                // read loop
                 loop {
-                    if let Err(_) = reader.read_exact(&mut size).await {
-                        eprintln!("failed to register user");
+                    if let Err(e) = reader.read_exact(&mut size).await {
+                        eprintln!("failed to read packet: {e}");
                         continue;
                     }
                     let size = u32::from_ne_bytes(size);
                     let mut data = vec![0u8; size as usize];
-                    if let Err(_) = reader.read_exact(&mut data).await {
-                        eprintln!("failed to register user");
+                    if let Err(e) = reader.read_exact(&mut data).await {
+                        eprintln!("failed to read packet: {e}");
                         continue;
                     }
                     let data = String::from_utf8(data).unwrap();
                     let data: Packet = serde_json::from_str(&data).unwrap();
+                    // this means that the user has been kicked or the user exited
+                    if let Err(_) = tx.send(data).await {
+                        return;
+                    }
                 }            
             });
         }
