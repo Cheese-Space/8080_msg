@@ -19,8 +19,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let (tx, mut rx) = mpsc::channel::<Packet>(100);
     let (shutdown_tx, mut shutdown_rx) = mpsc::channel(1);
     eprintln!("connect to port: {port}");
-    
     let write_user_book = Arc::clone(&user_book);
+    // control-c handler
+    tokio::spawn(async move {
+        // bug: program could imedeatly stops if the ctrl_c function fails
+        let _ = tokio::signal::ctrl_c().await;
+        // it doesn't realy matter if the shutdown signal has been sent succsesfully, you can always force quit the server
+        let _ = shutdown_tx.send(()).await;
+    });
     // conection listening thread
     tokio::spawn(async move {
         loop {
@@ -58,7 +64,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
                     let client = Client {
                         user: user,
-                        stream: Arc::new(Mutex::new(writer)),
+                        stream: writer,
                         shutdown: shutdown_tx
                     };
                     let username = client.user.get_username();
