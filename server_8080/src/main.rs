@@ -1,15 +1,12 @@
-use tokio::{io::
-    {self, AsyncReadExt, AsyncWriteExt}, net::{TcpListener, tcp::OwnedWriteHalf}, sync::oneshot::{self, Sender, error::TryRecvError}};
-use tokio::sync::mpsc;
+use tokio::io::AsyncReadExt;
+use tokio::io::AsyncWriteExt;
+use tokio::net::TcpListener;
+use tokio::sync::mpsc::{self, Sender};
 use tokio::sync::Mutex;
 use lib8080_msg::*;
 use std::collections::HashMap;
 use std::sync::Arc;
-struct Client {
-    user: User,
-    stream: OwnedWriteHalf
-}
-type UserBook = Arc<Mutex<HashMap<Username, Client>>>;
+type UserBook = Arc<Mutex<HashMap<Username, Sender<Packet>>>>;
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let user_book: UserBook = Arc::new(Mutex::new(HashMap::new()));
