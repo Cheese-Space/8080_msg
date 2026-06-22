@@ -49,7 +49,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     eprintln!("failed to register user: {e}");
                     return;
                 }
-                let data: Packet = serde_json::from_slice(&data).unwrap();
+                let data: Packet = match serde_json::from_slice(&data) {
+                    Ok(d) => d,
+                    Err(e) => {
+                        eprintln!("failed to register user: invalid request: {e}");
+                        return;
+                    }
+                };
                 // first packet should always be the join request, if not the user won't be registered
                 if let Packet::Join(u) = data {
                     let mut user = User::new(u, None);
@@ -91,8 +97,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         eprintln!("failed to read packet: {e}");
                         continue;
                     }
-                    let data = String::from_utf8(data).unwrap();
-                    let data: Packet = serde_json::from_str(&data).unwrap();
+                    let data: Packet = match serde_json::from_slice(&data) {
+                        Ok(d) => d,
+                        Err(e) => {
+                            eprintln!("user send malformed packet: {e}");
+                            continue;
+                        }
+                    };
                     // this means that the user has been kicked or the user exited
                     if let Err(_) = tx.send(data).await {
                         return;
