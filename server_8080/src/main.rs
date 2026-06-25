@@ -54,30 +54,31 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
                 };
                 // first packet should always be the join request, if not the user won't be registered
-                if let Packet::Join(u) = data {
+                let user = if let Packet::Join(u) = data {
                     let mut user = User::new(u, None);
-                    let mut user_book = user_book.lock().await;
+                    let user_book = user_book.lock().await;
                     if user_book.is_empty() {
                         user.set_privelige(UserPrivelige::Admin);
                     }
-                    let client = Client {
-                        user: user,
-                        stream: writer,
-                    };
-                    let username = client.user.get_username();
+                    let username = user.get_username();
                     if let Some(_) = user_book.get(username) {
                         eprintln!("failed to register user: an user with the same username alreaady exists");
                         return
                     }
-                    user_book.insert(username.to_string(), client);
+                    user
                 }
                 else {
                     eprintln!("failed to register user: first request wasn't join request`");
                     return;
-                }
+                };
                 let (tx, mut rx) = mpsc::channel(50);
+                let tx_clone = tx.clone();
+                let mut user_book_guard = user_book.lock().await;
+                user_book_guard.insert(user.get_username().to_string(), tx_clone);
+                drop(user_book_guard);          
                 // writer thread
                 tokio::spawn(async move {
+                    let user_book = Arc::clone(&user_book);
                     while let Some(packet) = rx.recv().await {
                         
                     }
