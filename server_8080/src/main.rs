@@ -89,7 +89,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         eprintln!("failed to read packet: {e}");
                         continue;
                     }
-                    let size = u32::from_ne_bytes(size);
+                    let size = u32::from_be_bytes(size);
                     let mut data = vec![0u8; size as usize];
                     if let Err(e) = reader.read_exact(&mut data).await {
                         eprintln!("failed to read packet: {e}");

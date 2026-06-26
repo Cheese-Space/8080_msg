@@ -74,7 +74,7 @@ impl Packet {
 impl From<Packet> for Vec<u8> {
     fn from(value: Packet) -> Self {
         let contents = serde_json::to_string(&value).unwrap().as_bytes().to_vec();
-        let mut header = (contents.len() as u32).to_ne_bytes().to_vec();
+        let mut header = (contents.len() as u32).to_be_bytes().to_vec();
         for i in contents {
             header.push(i);
         }
