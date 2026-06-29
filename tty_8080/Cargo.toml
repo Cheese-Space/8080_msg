@@ -7,3 +7,6 @@ edition = "2024"
 serde = {workspace = true}
 serde_json = {workspace = true}
 lib8080_msg = {workspace = true}
+tokio = {workspace = true}
+cursive = "0.21.1"
+clap = { version = "4.6.1", features = ["derive"] }
