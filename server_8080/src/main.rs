@@ -1,5 +1,4 @@
 use tokio::io::AsyncReadExt;
-use tokio::io::AsyncWriteExt;
 use tokio::net::TcpListener;
 use tokio::sync::mpsc::{self, Sender};
 use tokio::sync::Mutex;
@@ -28,7 +27,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let user_book: UserBook = Arc::new(Mutex::new(HashMap::new()));
     let listener = TcpListener::bind("0.0.0.0:0").await?;
     let port = listener.local_addr()?.port();
-    PORT.set(port);
+    PORT.set(port).expect("PORT should be unset");
     let (shutdown_tx, mut shutdown_rx) = mpsc::channel(1);
     eprintln!("connect to port: {port}");
     // control-c handler
