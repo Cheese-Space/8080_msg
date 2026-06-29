@@ -124,10 +124,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     }
                                 };
                                 drop(user_book);
+                                // kinda defeats the purpose of LazyLock but thats not important for now
                                 let _ = sender.send(Arc::new(KICK_MESSAGE.clone()));
                             }
-                            Packet::Msg(_) => {
-                            
+                            Packet::Msg(ref m) => {
+                                if m.get_username() == user.get_username() {
+                                    // the client is responsible for displaying its own messages
+                                    continue;
+                                }
+                                // TODO: find an alternative to cloning
+                                let _ = Packet::Msg(m.clone()).send_from_writer(&mut writer).await;
                             }
                         }
                     }
