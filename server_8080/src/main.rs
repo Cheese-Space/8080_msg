@@ -6,7 +6,8 @@ use tokio::sync::Mutex;
 use lib8080_msg::*;
 use std::collections::HashMap;
 use std::sync::Arc;
-type UserBook = Arc<Mutex<HashMap<Username, Sender<Packet>>>>;
+// it sends an Arc, so we don't have to clone when sending a Message to all writer thread
+type UserBook = Arc<Mutex<HashMap<Username, Sender<Arc<Packet>>>>>;
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let user_book: UserBook = Arc::new(Mutex::new(HashMap::new()));
@@ -75,10 +76,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let tx_clone = tx.clone();
                 let mut user_book_guard = user_book.lock().await;
                 user_book_guard.insert(user.get_username().to_string(), tx_clone);
-                drop(user_book_guard);          
+                drop(user_book_guard); 
+                let u_book_clone = Arc::clone(&user_book);
                 // writer thread
                 tokio::spawn(async move {
-                    let user_book = Arc::clone(&user_book);
+                    let user_book = u_book_clone;
                     while let Some(packet) = rx.recv().await {
                         
                     }
@@ -102,10 +104,26 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             continue;
                         }
                     };
-                    // this means that the user has been kicked or the user exited
-                    if let Err(_) = tx.send(data).await {
-                        return;
+                    if let Packet::Msg(m) = data {
+                        let user_book = user_book.lock().await;
+                        let mut senders = Vec::with_capacity(user_book.len());
+                        for (_, sender) in user_book.iter() {
+                            senders.push(sender.clone());
+                        }
+                        let packet = Arc::new(Packet::Msg(m));
+                        drop(user_book);
+                        for sender in senders {
+                            let packet_clone = Arc::clone(&packet);
+                            let _ = sender.send(packet_clone).await;
+                        }
                     }
+                    else {
+                        // this means that the user has been kicked or the user exited
+                        if let Err(_) = tx.send(Arc::new(data)).await {
+                            return;
+                        }
+                    }
+                    
                 }            
             });
         }
