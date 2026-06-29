@@ -62,18 +62,18 @@ pub enum Packet {
     Msg(Message)
 }
 impl Packet {
-    pub async fn send(self, stream: &mut TcpStream) -> io::Result<()> {
+    pub async fn send(&self, stream: &mut TcpStream) -> io::Result<()> {
         let data_as_bytes = Vec::from(self);
         stream.write_all(&data_as_bytes).await
     }
-    pub async fn send_from_writer(self, stream: &mut OwnedWriteHalf) -> io::Result<()> {
+    pub async fn send_from_writer(&self, stream: &mut OwnedWriteHalf) -> io::Result<()> {
         let data_as_bytes = Vec::from(self);
         stream.write_all(&data_as_bytes).await
     }
 }
-impl From<Packet> for Vec<u8> {
-    fn from(value: Packet) -> Self {
-        let contents = serde_json::to_string(&value).unwrap().as_bytes().to_vec();
+impl From<&Packet> for Vec<u8> {
+    fn from(value: &Packet) -> Self {
+        let contents = serde_json::to_string(value).unwrap().as_bytes().to_vec();
         let mut header = (contents.len() as u32).to_be_bytes().to_vec();
         for i in contents {
             header.push(i);
