@@ -5,11 +5,18 @@ use tokio::net::tcp::OwnedWriteHalf;
 use tokio::io::AsyncWriteExt;
 use std::io;
 use std::fmt;
+// could change into a TinyStr in the future
 pub type Username = String;
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Message {
     user: Username,
     msg: String
+}
+impl Message {
+    #[inline]
+    pub fn get_username(&self) -> &str {
+        &self.user
+    }
 }
 impl fmt::Display for Message {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
