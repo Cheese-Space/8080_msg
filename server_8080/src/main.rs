@@ -6,6 +6,21 @@ use tokio::sync::Mutex;
 use lib8080_msg::*;
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::sync::LazyLock;
+use std::sync::OnceLock;
+static PORT: OnceLock<u16> = OnceLock::new();
+static GEPORT_MESSAGE: LazyLock<Packet> = LazyLock::new(|| {
+    Packet::Msg(Message::new("server", &format!("port = {}", PORT.get().unwrap())))
+});
+static KICK_MESSAGE: LazyLock<Packet> = LazyLock::new(|| {
+    Packet::Msg(Message::new("server", "you have been kicked!"))
+});
+static NO_KICK_PREMISION: LazyLock<Packet> = LazyLock::new(|| {
+   Packet::Msg(Message::new("server", "you don't have premision to kick people")) 
+});
+static USER_TO_KICK_DOESNT_EXIST: LazyLock<Packet> = LazyLock::new(|| {
+   Packet::Msg(Message::new("server", "the user you wanted to kick doesn't exist")) 
+});
 // it sends an Arc, so we don't have to clone when sending a Message to all writer thread
 type UserBook = Arc<Mutex<HashMap<Username, Sender<Arc<Packet>>>>>;
 #[tokio::main]
@@ -13,6 +28,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let user_book: UserBook = Arc::new(Mutex::new(HashMap::new()));
     let listener = TcpListener::bind("0.0.0.0:0").await?;
     let port = listener.local_addr()?.port();
+    PORT.set(port);
     let (shutdown_tx, mut shutdown_rx) = mpsc::channel(1);
     eprintln!("connect to port: {port}");
     // control-c handler
@@ -82,7 +98,34 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 tokio::spawn(async move {
                     let user_book = u_book_clone;
                     while let Some(packet) = rx.recv().await {
-                        
+                        match *packet {
+                            Packet::Exit => {
+                                let username = user.get_username();
+                                let mut user_book = user_book.lock().await;
+                                user_book.remove(username);
+                                break;
+                                // the other thread will error when trying to send and exit as the Reciever will be dropped here
+                            }
+                            Packet::Join(_) => (), // joining is handled in the reader thread
+                            Packet::GetPort => {
+                                let _ = GEPORT_MESSAGE.send_from_writer(&mut writer).await;
+                            }
+                            Packet::Kick(ref u) => {
+                                if !matches!(user.get_privelige(), UserPrivelige::Admin) {
+                                    let _ = NO_KICK_PREMISION.send_from_writer(&mut writer).await;
+                                    continue;
+                                }
+                                let user_book = user_book.lock().await;
+                                let sender = match user_book.remove(u) {
+                                    Some(s) => s,
+                                    None => {
+                                        let _ = USER_TO_KICK_DOESNT_EXIST.send_from_writer(&mut writer).await;
+                                        continue;
+                                    }
+                                };
+                                let _ = sender.send(Arc::new(*KICK_MESSAGE));
+                            }
+                        }
                     }
                 });
                 // read loop
