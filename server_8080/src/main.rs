@@ -51,7 +51,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let user_book = Arc::clone(&user_book);
             // each connection gets its own thread could be prone to ddos atacks maybe?
             tokio::spawn(async move {
-                let (mut reader, writer) = connection.into_split(); 
+                let (mut reader, mut writer) = connection.into_split(); 
                 let mut size = [0u8; 4];
                 if let Err(_) = reader.read_exact(&mut size).await {
                     eprintln!("failed to register user");
@@ -115,15 +115,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     let _ = NO_KICK_PREMISION.send_from_writer(&mut writer).await;
                                     continue;
                                 }
-                                let user_book = user_book.lock().await;
+                                let mut user_book = user_book.lock().await;
                                 let sender = match user_book.remove(u) {
                                     Some(s) => s,
                                     None => {
+                                        drop(user_book);
                                         let _ = USER_TO_KICK_DOESNT_EXIST.send_from_writer(&mut writer).await;
                                         continue;
                                     }
                                 };
-                                let _ = sender.send(Arc::new(*KICK_MESSAGE));
+                                drop(user_book);
+                                let _ = sender.send(Arc::new(KICK_MESSAGE.clone()));
+                            }
+                            Packet::Msg(_) => {
+                            
                             }
                         }
                     }

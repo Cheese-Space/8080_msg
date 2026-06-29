@@ -6,7 +6,7 @@ use tokio::io::AsyncWriteExt;
 use std::io;
 use std::fmt;
 pub type Username = String;
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Message {
     user: Username,
     msg: String
@@ -53,7 +53,7 @@ impl User {
         Self { name, privelige }
     }
 }
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum Packet {
     Exit,
     Join(Username),
