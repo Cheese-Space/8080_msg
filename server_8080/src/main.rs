@@ -7,6 +7,9 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::LazyLock;
 use std::sync::OnceLock;
+#[macro_use]
+extern crate log;
+use log::LevelFilter;
 static PORT: OnceLock<u16> = OnceLock::new();
 static GEPORT_MESSAGE: LazyLock<Packet> = LazyLock::new(|| {
     Packet::Msg(Message::new("server", &format!("port = {}", PORT.get().unwrap())))
@@ -24,12 +27,15 @@ static USER_TO_KICK_DOESNT_EXIST: LazyLock<Packet> = LazyLock::new(|| {
 type UserBook = Arc<Mutex<HashMap<Username, Sender<Arc<Packet>>>>>;
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    pretty_env_logger::formatted_builder()
+        .filter_level(LevelFilter::Trace)
+        .init();
     let user_book: UserBook = Arc::new(Mutex::new(HashMap::new()));
     let listener = TcpListener::bind("0.0.0.0:0").await?;
     let port = listener.local_addr()?.port();
     PORT.set(port).expect("PORT should be unset");
     let (shutdown_tx, mut shutdown_rx) = mpsc::channel(1);
-    eprintln!("connect to port: {port}");
+    info!("connect to port: {port}");
     // control-c handler
     tokio::spawn(async move {
         // bug: program could imedeatly stops if the ctrl_c function fails
@@ -53,19 +59,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let (mut reader, mut writer) = connection.into_split(); 
                 let mut size = [0u8; 4];
                 if let Err(_) = reader.read_exact(&mut size).await {
-                    eprintln!("failed to register user");
+                    error!("failed to register user");
                     return;
                 }
-                let size_to_read = u32::from_ne_bytes(size) as usize;
+                let size_to_read = u32::from_be_bytes(size) as usize;
                 let mut data = vec![0u8; size_to_read];
                 if let Err(e) = reader.read_exact(&mut data).await {
-                    eprintln!("failed to register user: {e}");
+                    error!("failed to register user: {e}");
                     return;
                 }
                 let data: Packet = match serde_json::from_slice(&data) {
                     Ok(d) => d,
                     Err(e) => {
-                        eprintln!("failed to register user: invalid request: {e}");
+                        error!("failed to register user: invalid request: {e}");
                         return;
                     }
                 };
@@ -78,24 +84,27 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
                     let username = user.get_username();
                     if let Some(_) = user_book.get(username) {
-                        eprintln!("failed to register user: an user with the same username alreaady exists");
+                        error!("failed to register user: an user with the same username alreaady exists");
                         return
                     }
                     user
                 }
                 else {
-                    eprintln!("failed to register user: first request wasn't join request`");
+                    error!("failed to register user: first request wasn't join request`");
                     return;
                 };
                 let (tx, mut rx) = mpsc::channel(50);
                 let tx_clone = tx.clone();
                 let mut user_book_guard = user_book.lock().await;
                 user_book_guard.insert(user.get_username().to_string(), tx_clone);
+                info!("user '{}' joined", user.get_username());
                 drop(user_book_guard); 
                 let u_book_clone = Arc::clone(&user_book);
                 // writer thread
+                let u_clone = user.clone();
                 tokio::spawn(async move {
                     let user_book = u_book_clone;
+                    let user = u_clone;
                     while let Some(packet) = rx.recv().await {
                         match *packet {
                             Packet::Exit => {
@@ -140,20 +149,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 });
                 // read loop
                 loop {
+                    // this means the user disconnected suddenly
                     if let Err(e) = reader.read_exact(&mut size).await {
-                        eprintln!("failed to read packet: {e}");
-                        continue;
+                        error!("failed to read packet: {e}\n removing: {}", user.get_username());
+                        let mut user_book = user_book.lock().await;
+                        user_book.remove(user.get_username());
+                        return;
                     }
                     let size = u32::from_be_bytes(size);
                     let mut data = vec![0u8; size as usize];
                     if let Err(e) = reader.read_exact(&mut data).await {
-                        eprintln!("failed to read packet: {e}");
+                        error!("lost connection to cliet: {e}\nwill deregister: {}", user.get_username());
                         continue;
                     }
                     let data: Packet = match serde_json::from_slice(&data) {
                         Ok(d) => d,
                         Err(e) => {
-                            eprintln!("user send malformed packet: {e}");
+                            error!("user send malformed packet: {e}");
                             continue;
                         }
                     };
