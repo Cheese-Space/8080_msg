@@ -3,7 +3,6 @@ resolver = "3"
 members = ["lib8080_msg", "tty_8080", "server_8080"]
 
 [workspace.dependencies]
-serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.150"
 lib8080_msg = { path = "lib8080_msg" }
 tokio = { version = "1.52.3", features = ["full"] }
