@@ -36,7 +36,7 @@ pub enum UserPrivelige {
     Normal,
     Admin
 }
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct User {
     name: Username,
     privelige: UserPrivelige
