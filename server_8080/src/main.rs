@@ -159,8 +159,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     let size = u32::from_be_bytes(size);
                     let mut data = vec![0u8; size as usize];
                     if let Err(e) = reader.read_exact(&mut data).await {
-                        error!("lost connection to cliet: {e}\nwill deregister: {}", user.get_username());
-                        continue;
+                        error!("lost connection to cliet: {e}\nwill remove: {}", user.get_username());
+                        let mut user_book = user_book.lock().await;
+                        user_book.remove(user.get_username());
+                        return;
                     }
                     let data: Packet = match serde_json::from_slice(&data) {
                         Ok(d) => d,
