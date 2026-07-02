@@ -77,6 +77,14 @@ impl Packet {
         let data_as_bytes = Vec::from(self);
         stream.write_all(&data_as_bytes).await
     }
+    pub fn get_inner_msg(&self) -> Option<&Message> {
+        if let Packet::Msg(msg) = self {
+            Some(msg)
+        }
+        else {
+            None
+        }
+    }
 }
 impl From<&Packet> for Vec<u8> {
     fn from(value: &Packet) -> Self {
