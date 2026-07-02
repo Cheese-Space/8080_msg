@@ -28,7 +28,7 @@ type UserBook = Arc<Mutex<HashMap<Username, Sender<Arc<Packet>>>>>;
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     pretty_env_logger::formatted_builder()
-        .filter_level(LevelFilter::Trace)
+        .filter_level(LevelFilter::Info)
         .init();
     let user_book: UserBook = Arc::new(Mutex::new(HashMap::new()));
     let listener = TcpListener::bind("0.0.0.0:0").await?;
