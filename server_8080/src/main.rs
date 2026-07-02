@@ -106,7 +106,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     let user_book = u_book_clone;
                     let user = u_clone;
                     while let Some(packet) = rx.recv().await {
-                        match *packet {
+                        match &*packet {
                             Packet::Exit => {
                                 let username = user.get_username();
                                 let mut user_book = user_book.lock().await;
@@ -118,7 +118,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             Packet::GetPort => {
                                 let _ = GEPORT_MESSAGE.send_from_writer(&mut writer).await;
                             }
-                            Packet::Kick(ref u) => {
+                            Packet::Kick(u) => {
                                 if !matches!(user.get_privelige(), UserPrivelige::Admin) {
                                     let _ = NO_KICK_PREMISION.send_from_writer(&mut writer).await;
                                     continue;
@@ -136,13 +136,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 // kinda defeats the purpose of LazyLock but thats not important for now
                                 let _ = sender.send(Arc::new(KICK_MESSAGE.clone()));
                             }
-                            Packet::Msg(ref m) => {
-                                if m.get_username() == user.get_username() {
+                            // we know it is a Packet::Msg, if we matched the normal way, we would need to clone the inner message to avoid moving it
+                            msg => {
+                                if msg.get_inner_msg().expect("should be a Msg").get_username() == user.get_username() {
                                     // the client is responsible for displaying its own messages
                                     continue;
                                 }
-                                // TODO: find an alternative to cloning
-                                let _ = Packet::Msg(m.clone()).send_from_writer(&mut writer).await;
+                                let _ = msg.send_from_writer(&mut writer).await;
                             }
                         }
                     }
