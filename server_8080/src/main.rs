@@ -20,9 +20,6 @@ static KICK_MESSAGE: LazyLock<Packet> = LazyLock::new(|| {
 static NO_KICK_PREMISION: LazyLock<Packet> = LazyLock::new(|| {
    Packet::Msg(Message::new("server", "you don't have premision to kick people")) 
 });
-static USER_TO_KICK_DOESNT_EXIST: LazyLock<Packet> = LazyLock::new(|| {
-   Packet::Msg(Message::new("server", "the user you wanted to kick doesn't exist")) 
-});
 // it sends an Arc, so we don't have to clone when sending a Message to all writer thread
 type UserBook = Arc<Mutex<HashMap<Username, Sender<Arc<Packet>>>>>;
 #[tokio::main]
@@ -106,13 +103,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     let user_book = u_book_clone;
                     let user = u_clone;
                     while let Some(packet) = rx.recv().await {
+                        info!("recieved packet: {:?}", *packet);
                         match &*packet {
                             Packet::Exit => {
-                                let username = user.get_username();
-                                let mut user_book = user_book.lock().await;
-                                user_book.remove(username);
+                                // the read thread will auto remove on failiure anyway so we only have to break the write loop
                                 break;
-                                // the other thread will error when trying to send and exit as the Reciever will be dropped here
                             }
                             Packet::Join(_) => (), // joining is handled in the reader thread
                             Packet::GetPort => {
@@ -128,13 +123,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     Some(s) => s,
                                     None => {
                                         drop(user_book);
-                                        let _ = USER_TO_KICK_DOESNT_EXIST.send_from_writer(&mut writer).await;
+                                        let msg = Packet::Msg(Message::new("server", &format!("{u} doesn't exist")));
+                                        let _ = msg.send_from_writer(&mut writer).await;
                                         continue;
                                     }
                                 };
                                 drop(user_book);
                                 // kinda defeats the purpose of LazyLock but thats not important for now
-                                let _ = sender.send(Arc::new(KICK_MESSAGE.clone()));
+                                let _ = sender.send(Arc::new(KICK_MESSAGE.clone())).await;
+                                // exit makes the write loop stop
+                                let _ = sender.send(Arc::new(Packet::Exit)).await;
                             }
                             // we know it is a Packet::Msg, if we matched the normal way, we would need to clone the inner message to avoid moving it
                             msg => {
