@@ -104,8 +104,13 @@ async fn actual_main() -> Result<(), Box<dyn std::error::Error>> {
         let cb_cink = cb_clone;
         let username = u_clone;
         while let Some(msg) = rx.recv().await {
-            let msg = Packet::Msg(Message::new(&username, &msg));
-            let cb_cink = cb_cink.clone();
+            let split_message: Vec<&str> = msg.split_whitespace().collect();
+            let msg = match split_message[0] {
+                "/exit" => Packet::Exit,
+                "/getport" => Packet::GetPort,
+                "/kick" if split_message.len() == 2 => Packet::Kick(split_message[1].to_string()),
+                _ => Packet::Msg(Message::new(&username, &msg))
+            };
             if msg.send_from_writer(&mut writer).await.is_err() {
                 cb_cink.send(Box::new(|siv| {
                     siv.add_layer(Dialog::new().content(
@@ -114,6 +119,10 @@ async fn actual_main() -> Result<(), Box<dyn std::error::Error>> {
                             .child(Button::new("ok", |siv| {siv.quit();}))
                     ).title("error"));
                 })).unwrap()
+            }
+            if let Packet::Exit = msg {
+                cb_cink.send(Box::new(|siv| siv.quit())).unwrap();
+                return;
             }
         }
     });
@@ -124,9 +133,12 @@ async fn actual_main() -> Result<(), Box<dyn std::error::Error>> {
                 if contents.trim().is_empty() {
                     return;
                 }
-                siv.call_on_name("text_buffer", |view: &mut TextView| {
-                    view.append(format!("me: {contents}\n", ));
-                });
+                let split_content: Vec<&str> = contents.split_whitespace().collect();
+                if !(split_content[0] == "/kick" || split_content[0] == "/getport" || split_content[0] == "/exit") {
+                    siv.call_on_name("text_buffer", |view: &mut TextView| {
+                        view.append(format!("me: {contents}\n", ));
+                    });
+                }
                 siv.call_on_name("input_field", move |view: &mut EditView| {
                    view.set_content("");
                 });
