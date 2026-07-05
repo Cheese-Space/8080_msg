@@ -30,7 +30,7 @@ impl Message {
     }
 }
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, Default)]
-pub enum UserPrivelige {
+pub enum UserPrivilege {
     ReadOnly,
     #[default]
     Normal,
@@ -39,25 +39,25 @@ pub enum UserPrivelige {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct User {
     name: Username,
-    privelige: UserPrivelige
+    privilege: UserPrivilege
 }
 impl User {
     #[inline]
-    pub const fn get_privelige(&self) -> UserPrivelige {
-        self.privelige
+    pub const fn get_privilege(&self) -> UserPrivilege {
+        self.privilege
     }
     #[inline]
-    pub const fn set_privelige(&mut self, privelige: UserPrivelige) {
-        self.privelige = privelige;
+    pub const fn set_privilege(&mut self, privilege: UserPrivilege) {
+        self.privilege = privilege;
     }
     #[inline]
     pub fn get_username(&self) -> &str {
         &self.name
     }
     #[inline]
-    pub fn new(name: String, privelige: Option<UserPrivelige>) -> Self {
-        let privelige = privelige.unwrap_or_default();
-        Self { name, privelige }
+    pub fn new(name: String, privilege: Option<UserPrivilege>) -> Self {
+        let privilege = privilege.unwrap_or_default();
+        Self { name, privilege }
     }
 }
 #[derive(Serialize, Deserialize, Debug, Clone)]

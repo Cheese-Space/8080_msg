@@ -46,7 +46,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let (connection, _) = match listener.accept().await {
                 Ok(c) => c,
                 Err(e) => {
-                    eprintln!("failed to connect to user: {e}");
+                    error!("failed to connect to user: {e}");
                     return;
                 }
             };
@@ -77,7 +77,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     let mut user = User::new(u, None);
                     let user_book = user_book.lock().await;
                     if user_book.is_empty() {
-                        user.set_privelige(UserPrivelige::Admin);
+                        user.set_privilege(UserPrivilege::Admin);
                     }
                     let username = user.get_username();
                     if let Some(_) = user_book.get(username) {
@@ -114,7 +114,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 let _ = GEPORT_MESSAGE.send_from_writer(&mut writer).await;
                             }
                             Packet::Kick(u) => {
-                                if !matches!(user.get_privelige(), UserPrivelige::Admin) {
+                                if !matches!(user.get_privilege(), UserPrivilege::Admin) {
                                     let _ = NO_KICK_PREMISION.send_from_writer(&mut writer).await;
                                     continue;
                                 }
