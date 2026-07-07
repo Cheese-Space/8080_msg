@@ -6,4 +6,7 @@ edition = "2024"
 [dependencies]
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = {workspace = true}
-tokio = {version = "1.52.3", default-features = false, features = ["io-util"]}
+tokio = {version = "1.52.3", default-features = false, features = ["io-util"], optional = true}
+
+[features]
+async = ["dep:tokio"]
