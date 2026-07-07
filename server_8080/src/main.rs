@@ -74,7 +74,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 };
                 // first packet should always be the join request, if not the user won't be registered
                 let user = if let Packet::Join(u) = data {
-                    let mut user = User::new(u, None);
+                    let mut user = User::new(&u, None);
                     let user_book = user_book.lock().await;
                     if user_book.is_empty() {
                         user.set_privilege(UserPrivilege::Admin);
@@ -104,18 +104,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     let user = u_clone;
                     while let Some(packet) = rx.recv().await {
                         info!("recieved packet: {:?}", *packet);
-                        match &*packet {
+                        match packet.as_ref() {
                             Packet::Exit => {
                                 // the read thread will auto remove on failiure anyway so we only have to break the write loop
                                 break;
                             }
                             Packet::Join(_) => (), // joining is handled in the reader thread
                             Packet::GetPort => {
-                                let _ = GEPORT_MESSAGE.send_from_writer(&mut writer).await;
+                                let _ = GEPORT_MESSAGE.send_aync(&mut writer).await;
                             }
                             Packet::Kick(u) => {
                                 if !matches!(user.get_privilege(), UserPrivilege::Admin) {
-                                    let _ = NO_KICK_PREMISION.send_from_writer(&mut writer).await;
+                                    let _ = NO_KICK_PREMISION.send_aync(&mut writer).await;
                                     continue;
                                 }
                                 let mut user_book = user_book.lock().await;
@@ -124,7 +124,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     None => {
                                         drop(user_book);
                                         let msg = Packet::Msg(Message::new("server", &format!("{u} doesn't exist")));
-                                        let _ = msg.send_from_writer(&mut writer).await;
+                                        let _ = msg.send_aync(&mut writer).await;
                                         continue;
                                     }
                                 };
@@ -140,7 +140,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     // the client is responsible for displaying its own messages
                                     continue;
                                 }
-                                let _ = msg.send_from_writer(&mut writer).await;
+                                let _ = msg.send_aync(&mut writer).await;
                             }
                         }
                     }
