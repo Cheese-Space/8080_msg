@@ -113,7 +113,7 @@ impl Packet {
     /// this function only works on async writers which implement tokio's [`AsyncWriteExt`](https://docs.rs/tokio/latest/tokio/io/trait.AsyncWriteExt.html) trait
     #[cfg(feature = "async")]
     #[cfg_attr(docsrs, doc(cfg(feature = "async")))]
-    pub async fn send_aync<W: AsyncWriteExt + Unpin>(&self, stream: &mut W) -> io::Result<()> {
+    pub async fn send_async<W: AsyncWriteExt + Unpin>(&self, stream: &mut W) -> io::Result<()> {
         let data_as_bytes = Vec::from(self);
         stream.write_all(&data_as_bytes).await
     }

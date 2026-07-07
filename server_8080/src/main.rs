@@ -111,11 +111,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             }
                             Packet::Join(_) => (), // joining is handled in the reader thread
                             Packet::GetPort => {
-                                let _ = GEPORT_MESSAGE.send_aync(&mut writer).await;
+                                let _ = GEPORT_MESSAGE.send_async(&mut writer).await;
                             }
                             Packet::Kick(u) => {
                                 if !matches!(user.get_privilege(), UserPrivilege::Admin) {
-                                    let _ = NO_KICK_PREMISION.send_aync(&mut writer).await;
+                                    let _ = NO_KICK_PREMISION.send_async(&mut writer).await;
                                     continue;
                                 }
                                 let mut user_book = user_book.lock().await;
@@ -124,7 +124,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     None => {
                                         drop(user_book);
                                         let msg = Packet::Msg(Message::new("server", &format!("{u} doesn't exist")));
-                                        let _ = msg.send_aync(&mut writer).await;
+                                        let _ = msg.send_async(&mut writer).await;
                                         continue;
                                     }
                                 };
@@ -140,7 +140,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     // the client is responsible for displaying its own messages
                                     continue;
                                 }
-                                let _ = msg.send_aync(&mut writer).await;
+                                let _ = msg.send_async(&mut writer).await;
                             }
                         }
                     }

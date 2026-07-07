@@ -43,7 +43,7 @@ async fn main() -> ExitCode {
 async fn actual_main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Args::parse();
     let (mut reader, mut writer) = TcpStream::connect(format!("{}:{}", args.adress, args.port)).await?.into_split();
-    Packet::Join(args.username.clone()).send_aync(&mut writer).await?;
+    Packet::Join(args.username.clone()).send_async(&mut writer).await?;
     let mut siv = Cursive::default();
     let cb_cink = siv.cb_sink().clone();
     let cb_clone = cb_cink.clone();
@@ -111,7 +111,7 @@ async fn actual_main() -> Result<(), Box<dyn std::error::Error>> {
                 "/kick" if split_message.len() == 2 => Packet::Kick(split_message[1].to_string()),
                 _ => Packet::Msg(Message::new(&username, &msg))
             };
-            if msg.send_aync(&mut writer).await.is_err() {
+            if msg.send_async(&mut writer).await.is_err() {
                 cb_cink.send(Box::new(|siv| {
                     siv.add_layer(Dialog::new().content(
                         LinearLayout::vertical()
