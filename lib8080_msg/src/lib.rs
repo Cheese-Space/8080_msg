@@ -1,8 +1,14 @@
 //! the internal library for server_8080 and tty_8080  
-//! more usage examples will come when the guide on making a custom client is finished
+//! more usage examples will come when the guide on making a custom client is finished  
+//! 
+//! # async
+//! if you want to write a [`Packet`] asyncly, you need to enable the async feature  
+//! the async feature is not enable by default
 #![deny(missing_docs)]
+#![cfg_attr(docsrs, feature(doc_cfg))]
 use serde::Serialize;
 use serde::Deserialize;
+#[cfg(feature = "async")]
 use tokio::io::AsyncWriteExt;
 use std::io::{self, Write};
 use std::fmt;
@@ -105,6 +111,8 @@ impl Packet {
     /// send a [`Packet`] to an async writer
     /// 
     /// this function only works on async writers which implement tokio's [`AsyncWriteExt`](https://docs.rs/tokio/latest/tokio/io/trait.AsyncWriteExt.html) trait
+    #[cfg(feature = "async")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "async")))]
     pub async fn send_aync<W: AsyncWriteExt + Unpin>(&self, stream: &mut W) -> io::Result<()> {
         let data_as_bytes = Vec::from(self);
         stream.write_all(&data_as_bytes).await

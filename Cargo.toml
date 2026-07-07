@@ -4,5 +4,5 @@ members = ["lib8080_msg", "tty_8080", "server_8080"]
 
 [workspace.dependencies]
 serde_json = "1.0.150"
-lib8080_msg = { path = "lib8080_msg" }
+lib8080_msg = { path = "lib8080_msg", features = ["async"] }
 tokio = { version = "1.52.3", features = ["full"] }
