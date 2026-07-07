@@ -3,7 +3,7 @@
 //! 
 //! # async
 //! if you want to write a [`Packet`] asyncly, you need to enable the async feature  
-//! the async feature is not enable by default
+//! the async feature is not enabled by default
 #![deny(missing_docs)]
 #![cfg_attr(docsrs, feature(doc_cfg))]
 use serde::Serialize;
@@ -35,7 +35,7 @@ impl Message {
         &self.user
     }
     #[must_use]
-    /// create a new user
+    /// create a new message
     pub fn new(user: &str, msg: &str) -> Self {
         Self { user: user.to_string(), msg: msg.to_string() }
     }
