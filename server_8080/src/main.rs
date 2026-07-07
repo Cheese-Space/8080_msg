@@ -14,8 +14,8 @@ static PORT: OnceLock<u16> = OnceLock::new();
 static GEPORT_MESSAGE: LazyLock<Packet> = LazyLock::new(|| {
     Packet::Msg(Message::new("server", &format!("port = {}", PORT.get().unwrap())))
 });
-static KICK_MESSAGE: LazyLock<Packet> = LazyLock::new(|| {
-    Packet::Msg(Message::new("server", "you have been kicked!"))
+static KICK_MESSAGE: LazyLock<Arc<Packet>> = LazyLock::new(|| {
+    Arc::new(Packet::Msg(Message::new("server", "you have been kicked!")))
 });
 static NO_KICK_PREMISION: LazyLock<Packet> = LazyLock::new(|| {
    Packet::Msg(Message::new("server", "you don't have premision to kick people")) 
@@ -129,8 +129,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     }
                                 };
                                 drop(user_book);
-                                // kinda defeats the purpose of LazyLock but thats not important for now
-                                let _ = sender.send(Arc::new(KICK_MESSAGE.clone())).await;
+                                let _ = sender.send(Arc::clone(&KICK_MESSAGE)).await;
                                 // exit makes the write loop stop
                                 let _ = sender.send(Arc::new(Packet::Exit)).await;
                             }
