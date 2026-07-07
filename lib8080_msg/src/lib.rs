@@ -1,82 +1,117 @@
+//! the internal library for server_8080 and tty_8080  
+//! more usage examples will come when the guide on making a custom client is finished
+#![deny(missing_docs)]
 use serde::Serialize;
 use serde::Deserialize;
-use tokio::net::TcpStream;
-use tokio::net::tcp::OwnedWriteHalf;
 use tokio::io::AsyncWriteExt;
-use std::io;
+use std::io::{self, Write};
 use std::fmt;
+use std::marker::Unpin;
 // could change into a TinyStr in the future
+/// the type representing a username
+/// 
+/// it is not guaranteed that this type will always be a String
 pub type Username = String;
 #[derive(Serialize, Deserialize, Debug, Clone)]
+/// represents a message
 pub struct Message {
+    /// the user who send the message
     user: Username,
+    /// the actual message
+    /// 
+    /// the message must be valid utf-8
     msg: String
 }
 impl Message {
     #[inline]
+    /// get a refrence to the username
     pub fn get_username(&self) -> &str {
         &self.user
     }
+    #[must_use]
+    /// create a new user
+    pub fn new(user: &str, msg: &str) -> Self {
+        Self { user: user.to_string(), msg: msg.to_string() }
+    }
 }
+
 impl fmt::Display for Message {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}: {}", self.user, self.msg)
     }
 }
-impl Message {
-    #[must_use]
-    pub fn new(user: &str, msg: &str) -> Self {
-        Self { user: user.to_string(), msg: msg.to_string() }
-    }
-}
+/// represents what a [`User`] can and can't do
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, Default)]
 pub enum UserPrivilege {
+    /// only read
     ReadOnly,
     #[default]
+    /// read + write, is the default privilege
     Normal,
+    /// read + write + kick
     Admin
 }
+/// a user
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct User {
+    /// the name of the user
     name: Username,
+    /// the privilege of the user, see [`UserPirvilege`]
     privilege: UserPrivilege
 }
 impl User {
     #[inline]
+    /// get the privilege of the user
     pub const fn get_privilege(&self) -> UserPrivilege {
         self.privilege
     }
     #[inline]
+    /// set the privilege of the user
     pub const fn set_privilege(&mut self, privilege: UserPrivilege) {
         self.privilege = privilege;
     }
     #[inline]
+    /// get a refrence to the username of the user
     pub fn get_username(&self) -> &str {
         &self.name
     }
     #[inline]
-    pub fn new(name: String, privilege: Option<UserPrivilege>) -> Self {
+    /// create a new User
+    pub fn new(name: &str, privilege: Option<UserPrivilege>) -> Self {
         let privilege = privilege.unwrap_or_default();
-        Self { name, privilege }
+        Self { name: name.to_string(), privilege }
     }
 }
 #[derive(Serialize, Deserialize, Debug, Clone)]
+/// data which client(s) and the server can send to each other
 pub enum Packet {
+    /// client: signals that a client wants to exit
     Exit,
+    /// client: signals that a client wants to join
     Join(Username),
+    /// client: requests the port to connect to
     GetPort,
+    /// client: asks the server to kick a certain person
     Kick(Username),
+    /// client + server: sends a message to a client or the server
     Msg(Message)
 }
 impl Packet {
-    pub async fn send(&self, stream: &mut TcpStream) -> io::Result<()> {
+    /// send a [`Packet`] to a writer 
+    pub fn send<W: Write>(&self, stream: &mut W) -> io::Result<()> {
+        let data_as_bytes = Vec::from(self);
+        stream.write_all(&data_as_bytes)
+    }
+    /// send a [`Packet`] to an async writer
+    /// 
+    /// this function only works on async writers which implement tokio's [`AsyncWriteExt`](https://docs.rs/tokio/latest/tokio/io/trait.AsyncWriteExt.html) trait
+    pub async fn send_aync<W: AsyncWriteExt + Unpin>(&self, stream: &mut W) -> io::Result<()> {
         let data_as_bytes = Vec::from(self);
         stream.write_all(&data_as_bytes).await
     }
-    pub async fn send_from_writer(&self, stream: &mut OwnedWriteHalf) -> io::Result<()> {
-        let data_as_bytes = Vec::from(self);
-        stream.write_all(&data_as_bytes).await
-    }
+    /// get the inner [`Message`] of a [`Packet`]
+    /// 
+    /// returns None if self ≠ Packet::Msg
     pub fn get_inner_msg(&self) -> Option<&Message> {
         if let Packet::Msg(msg) = self {
             Some(msg)
