@@ -26,3 +26,19 @@ more info about the custom network protocol used coming (soon)!
   
 ## building a custom client  
 coming (soon)!  
+
+## building from source
+Building from soure is very easy.  
+First clone and cd into the repo:
+``` bash
+git clone https://github.com/Cheese-Space/8080_msg
+cd 8080_msg
+```
+Then cd into the part you want to build, for example tty_8080:
+``` bash
+cd tty_8080
+```
+And finally build/run via cargo:
+``` bash
+cargo run -- --adress localhost --port 8080 --username cheese_space
+```
