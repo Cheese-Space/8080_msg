@@ -34,6 +34,11 @@ impl Message {
     pub fn get_username(&self) -> &str {
         &self.user
     }
+    #[inline]
+    /// get a refrence to the message
+    pub fn get_message(&self) -> &str {
+        &self.msg
+    }
     #[must_use]
     /// create a new message
     pub fn new(user: &str, msg: &str) -> Self {
