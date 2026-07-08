@@ -139,3 +139,22 @@ impl From<&Packet> for Vec<u8> {
         header
     }
 }
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::assert_matches;
+    #[test]
+    fn send_test() {
+        let packet = Packet::GetPort;
+        let packet_as_bytes = Vec::from(&packet);
+        let mut should_be_same_as_packet: Vec<u8> = Vec::with_capacity(packet_as_bytes.len());
+        packet.send(&mut should_be_same_as_packet).unwrap();
+        assert_eq!(should_be_same_as_packet, packet_as_bytes);
+    }
+    #[test]
+    fn inner_msg_fail_test() {
+        let packet = Packet::Exit;
+        assert_matches!(packet.get_inner_msg(), None);
+    }
+    
+}
