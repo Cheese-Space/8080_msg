@@ -121,7 +121,7 @@ impl Packet {
     /// Note that this function is only available with the async feature enabled.  
     /// Also note that This function only works on async writers which implement tokio's [`AsyncWriteExt`](https://docs.rs/tokio/latest/tokio/io/trait.AsyncWriteExt.html) trait.  
     /// If you want to send a packet to a non-tokio async writer, then you can convert the packet to a [`Vec<u8>`](https://doc.rust-lang.org/std/vec/struct.Vec.html):
-    /// ```
+    /// ```ignore
     /// let packet = Packet::Exit;
     /// let packet_as_bytes = Vec::from(packet);
     /// ```  

@@ -181,6 +181,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 }
                                 let user_book = user_book.lock().await;
                                 let username = u.as_ref().expect("we checked if u is None");
+                                if username == user.read().await.get_username() {
+                                    // a user shouldn't be able to set his own privilege
+                                    continue;
+                                }
                                 let sender = match user_book.get(username) {
                                     Some(s) => s,
                                     None => {
@@ -251,6 +255,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             let packet_clone = Arc::clone(&packet);
                             let _ = sender.send(packet_clone);
                         }
+                    }
+                    else if let Packet::SetPrivilege(None, _) = data {
+                        // a user should'nt be able to set his own privilege
+                        continue;
                     }
                     else {
                         // this means that the user has been kicked or the user exited
