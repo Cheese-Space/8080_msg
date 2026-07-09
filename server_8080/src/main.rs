@@ -3,6 +3,7 @@ use tokio::io::AsyncReadExt;
 use tokio::net::TcpListener;
 use tokio::sync::mpsc::{self, UnboundedSender};
 use tokio::sync::Mutex;
+use tokio::sync::RwLock;
 use tokio::signal::ctrl_c;
 use lib8080_msg::*;
 use std::collections::HashMap;
@@ -23,6 +24,9 @@ static KICK_MESSAGE: LazyLock<Arc<Packet>> = LazyLock::new(|| {
 });
 static NO_KICK_PREMISION: LazyLock<Packet> = LazyLock::new(|| {
    Packet::Msg(Message::new("server", "you don't have premision to kick people")) 
+});
+static NO_CHANGE_PRIVILEGE_PREMISION: LazyLock<Packet> = LazyLock::new(|| {
+    Packet::Msg(Message::new("server", "you don't have the premision to change the privilege of other users"))
 });
 // it sends an Arc, so we don't have to clone when sending a Message to all writer thread
 type UserBook = Arc<Mutex<HashMap<Username, UnboundedSender<Arc<Packet>>>>>;
@@ -98,24 +102,28 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     error!("failed to register user: first request wasn't join request`");
                     return;
                 };
+                let user = Arc::new(RwLock::new(user));
                 let (tx, mut rx) = mpsc::unbounded_channel();
                 let tx_clone = tx.clone();
                 let mut user_book_guard = user_book.lock().await;
-                user_book_guard.insert(user.get_username().to_string(), tx_clone);
-                info!("user '{}' joined", user.get_username());
+                let user_read_guard = user.read().await;
+                user_book_guard.insert(user_read_guard.get_username().to_string(), tx_clone);
+                info!("user '{}' joined", user_read_guard.get_username());
                 drop(user_book_guard); 
+                drop(user_read_guard);
                 let u_book_clone = Arc::clone(&user_book);
                 // writer thread
-                let u_clone = user.clone();
-                let u_name = user.get_username().to_string();
+                let u_clone = Arc::clone(&user);
+                let u_clone_2 = Arc::clone(&user);
                 let tx_clone_2 = tx.clone();
                 // send at most 30 most recent messages to the client
                 if let Err(e) = db_client.conn(move |conn| {
+                    let user = u_clone_2;
                     let tx = tx_clone_2;
                     let mut stmt = conn.prepare("SELECT user, message FROM Messages WHERE id > (SELECT MAX(id) - 30 FROM Messages)")?;
                     let packets = stmt.query_map((), |row| {
                         let mut username: String = row.get("user")?;
-                        if username.as_str() == user.get_username() {
+                        if username.as_str() == user.blocking_read().get_username() {
                             username = String::from("me");
                         } 
                         let message: String = row.get("message")?;
@@ -144,7 +152,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 let _ = GEPORT_MESSAGE.send_async(&mut writer).await;
                             }
                             Packet::Kick(u) => {
-                                if !matches!(user.get_privilege(), UserPrivilege::Admin) {
+                                if !matches!(user.read().await.get_privilege(), UserPrivilege::Admin) {
                                     let _ = NO_KICK_PREMISION.send_async(&mut writer).await;
                                     continue;
                                 }
@@ -158,14 +166,35 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                         continue;
                                     }
                                 };
-                                drop(user_book);
                                 let _ = sender.send(Arc::clone(&KICK_MESSAGE));
                                 // exit makes the write loop stop
                                 let _ = sender.send(Arc::new(Packet::Exit));
                             }
+                            Packet::SetPrivilege(u, p) => {
+                                if u.is_none() {
+                                    user.write().await.set_privilege(*p);
+                                    continue;
+                                }
+                                if !matches!(user.read().await.get_privilege(), UserPrivilege::Admin) {
+                                    let _ = NO_CHANGE_PRIVILEGE_PREMISION.send_async(&mut writer).await;
+                                    continue;
+                                }
+                                let user_book = user_book.lock().await;
+                                let username = u.as_ref().expect("we checked if u is None");
+                                let sender = match user_book.get(username) {
+                                    Some(s) => s,
+                                    None => {
+                                        drop(user_book);
+                                        let msg = Packet::Msg(Message::new("server", &format!("{username} doesn't exist")));
+                                        let _ = msg.send_async(&mut writer).await;
+                                        continue;
+                                    }
+                                };
+                                let _ = sender.send(Arc::new(Packet::SetPrivilege(None, *p)));
+                            }
                             // we know it is a Packet::Msg, if we matched the normal way, we would need to clone the inner message to avoid moving it
                             msg => {
-                                if msg.get_inner_msg().expect("should be a Msg").get_username() == user.get_username() {
+                                if msg.get_inner_msg().expect("should be a Msg").get_username() == user.write().await.get_username() {
                                     // the client is responsible for displaying its own messages
                                     continue;
                                 }
@@ -178,18 +207,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 loop {
                     // this means the user disconnected suddenly
                     if let Err(e) = reader.read_exact(&mut size).await {
-                        error!("failed to read packet: {e}\n removing: {u_name}");
+                        let user = user.write().await;
+                        let username = user.get_username();
+                        error!("failed to read packet: {e}\n removing: {username}");
                         let mut user_book = user_book.lock().await;
-                        user_book.remove(&u_name);
+                        user_book.remove(username);
                         return;
                     }
                     let size = u32::from_be_bytes(size);
                     let mut data = vec![0u8; size as usize];
                     if let Err(e) = reader.read_exact(&mut data).await {
-                        error!("lost connection to cliet: {e}\nwill remove: {u_name}");
+                        let user = user.write().await;
+                        let username = user.get_username();
+                        error!("lost connection to cliet: {e}\nwill remove: {username}");
                         let mut user_book = user_book.lock().await;
-                        user_book.remove(&u_name);
-                        return;
+                        user_book.remove(username);
                     }
                     let data: Packet = match serde_json::from_slice(&data) {
                         Ok(d) => d,
@@ -200,6 +232,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     };
                     if let Packet::Msg(m) = data {
                         // add it to the database
+                        // we don't add it in the writer thread, because then server messages would be inserted into the db
                         let user = m.get_username().to_string();
                         let message = m.get_message().to_string();
                         if let Err(e) = db_client.conn(|conn| {
