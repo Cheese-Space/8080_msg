@@ -1,9 +1,9 @@
-//! the internal library for server_8080 and tty_8080  
-//! more usage examples will come when the guide on making a custom client is finished  
+//! The internal library for server_8080 and tty_8080.  
+//! More usage examples will come when the guide on making a custom client is finished.  
 //! 
 //! # async
-//! if you want to write a [`Packet`] asyncly, you need to enable the async feature  
-//! the async feature is not enabled by default
+//! If you want to write a [`Packet`] asyncly, you need to enable the async feature.  
+//! The async feature is not enabled by default.
 #![deny(missing_docs)]
 #![cfg_attr(docsrs, feature(doc_cfg))]
 use serde::Serialize;
@@ -59,11 +59,11 @@ pub enum UserPrivilege {
     #[default]
     /// read + write, is the default privilege
     Normal,
-    /// read + write + kick
+    /// read + write + kick + change user privilege
     Admin
 }
 /// a user
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Debug, Clone)]
 pub struct User {
     /// the name of the user
     name: Username,
@@ -104,6 +104,9 @@ pub enum Packet {
     GetPort,
     /// client: asks the server to kick a certain person
     Kick(Username),
+    /// client: asks the server to change the privilege of a certain user  
+    /// server: if None is specified for the user, change the privilege of the current user
+    SetPrivilege(Option<Username>, UserPrivilege),
     /// client + server: sends a message to a client or the server
     Msg(Message)
 }
@@ -122,6 +125,7 @@ impl Packet {
     /// let packet = Packet::Exit;
     /// let packet_as_bytes = Vec::from(packet);
     /// ```  
+    // todo: allow all async writers?
     #[cfg(feature = "async")]
     #[cfg_attr(docsrs, doc(cfg(feature = "async")))]
     pub async fn send_async<W: AsyncWriteExt + Unpin>(&self, stream: &mut W) -> io::Result<()> {
@@ -167,5 +171,4 @@ mod tests {
         let packet = Packet::Exit;
         assert_matches!(packet.get_inner_msg(), None);
     }
-    
 }
