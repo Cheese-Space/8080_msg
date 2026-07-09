@@ -1,12 +1,14 @@
+use async_sqlite::PoolBuilder;
 use tokio::io::AsyncReadExt;
 use tokio::net::TcpListener;
-use tokio::sync::mpsc::{self, Sender};
+use tokio::sync::mpsc::{self, UnboundedSender};
 use tokio::sync::Mutex;
 use lib8080_msg::*;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::LazyLock;
 use std::sync::OnceLock;
+use std::env::home_dir;
 #[macro_use]
 extern crate log;
 use log::LevelFilter;
@@ -21,7 +23,7 @@ static NO_KICK_PREMISION: LazyLock<Packet> = LazyLock::new(|| {
    Packet::Msg(Message::new("server", "you don't have premision to kick people")) 
 });
 // it sends an Arc, so we don't have to clone when sending a Message to all writer thread
-type UserBook = Arc<Mutex<HashMap<Username, Sender<Arc<Packet>>>>>;
+type UserBook = Arc<Mutex<HashMap<Username, UnboundedSender<Arc<Packet>>>>>;
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     pretty_env_logger::formatted_builder()
@@ -31,6 +33,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let listener = TcpListener::bind("0.0.0.0:0").await?;
     let port = listener.local_addr()?.port();
     PORT.set(port).expect("PORT should be unset");
+    let mut db_path = home_dir().unwrap_or_default();
+    db_path.push("8080_msg.db");
+    let db_client = PoolBuilder::new()
+        .path(format!("{}", db_path.display()))
+        .open().await?;
+    db_client.conn(|conn| {
+        conn.execute("CREATE TABLE IF NOT EXISTS Messages(id INTEGER PRIMARY KEY, user TEXT NOT NULL, message TEXT NOT NULL)", ())
+    }).await?;
     let (shutdown_tx, mut shutdown_rx) = mpsc::channel(1);
     info!("connect to port: {port}");
     // control-c handler
@@ -51,6 +61,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
             };
             let user_book = Arc::clone(&user_book);
+            let db_client = db_client.clone();
+            
             // each connection gets its own thread could be prone to ddos atacks maybe?
             tokio::spawn(async move {
                 let (mut reader, mut writer) = connection.into_split(); 
@@ -90,7 +102,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     error!("failed to register user: first request wasn't join request`");
                     return;
                 };
-                let (tx, mut rx) = mpsc::channel(50);
+                let (tx, mut rx) = mpsc::unbounded_channel();
                 let tx_clone = tx.clone();
                 let mut user_book_guard = user_book.lock().await;
                 user_book_guard.insert(user.get_username().to_string(), tx_clone);
@@ -99,6 +111,28 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let u_book_clone = Arc::clone(&user_book);
                 // writer thread
                 let u_clone = user.clone();
+                let u_name = user.get_username().to_string();
+                let tx_clone_2 = tx.clone();
+                // send at most 30 most recent messages to the client
+                if let Err(e) = db_client.conn(move |conn| {
+                    let tx = tx_clone_2;
+                    let mut stmt = conn.prepare("SELECT user, message FROM Messages WHERE id > (SELECT MAX(id) - 30 FROM Messages)")?;
+                    let packets = stmt.query_map((), |row| {
+                        let mut username: String = row.get("user")?;
+                        if username.as_str() == user.get_username() {
+                            username = String::from("me");
+                        } 
+                        let message: String = row.get("message")?;
+                        Ok(Packet::Msg(Message::new(&username, &message)))
+                    })?;
+                    for packet in packets {
+                        let packet = packet?;
+                        let _ = tx.send(Arc::new(packet));
+                    }
+                    Ok(())
+                }).await {
+                    error!("failed to query database: {e}");
+                }
                 tokio::spawn(async move {
                     let user_book = u_book_clone;
                     let user = u_clone;
@@ -129,9 +163,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     }
                                 };
                                 drop(user_book);
-                                let _ = sender.send(Arc::clone(&KICK_MESSAGE)).await;
+                                let _ = sender.send(Arc::clone(&KICK_MESSAGE));
                                 // exit makes the write loop stop
-                                let _ = sender.send(Arc::new(Packet::Exit)).await;
+                                let _ = sender.send(Arc::new(Packet::Exit));
                             }
                             // we know it is a Packet::Msg, if we matched the normal way, we would need to clone the inner message to avoid moving it
                             msg => {
@@ -148,17 +182,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 loop {
                     // this means the user disconnected suddenly
                     if let Err(e) = reader.read_exact(&mut size).await {
-                        error!("failed to read packet: {e}\n removing: {}", user.get_username());
+                        error!("failed to read packet: {e}\n removing: {u_name}");
                         let mut user_book = user_book.lock().await;
-                        user_book.remove(user.get_username());
+                        user_book.remove(&u_name);
                         return;
                     }
                     let size = u32::from_be_bytes(size);
                     let mut data = vec![0u8; size as usize];
                     if let Err(e) = reader.read_exact(&mut data).await {
-                        error!("lost connection to cliet: {e}\nwill remove: {}", user.get_username());
+                        error!("lost connection to cliet: {e}\nwill remove: {u_name}");
                         let mut user_book = user_book.lock().await;
-                        user_book.remove(user.get_username());
+                        user_book.remove(&u_name);
                         return;
                     }
                     let data: Packet = match serde_json::from_slice(&data) {
@@ -169,6 +203,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         }
                     };
                     if let Packet::Msg(m) = data {
+                        // add it to the database
+                        let user = m.get_username().to_string();
+                        let message = m.get_message().to_string();
+                        if let Err(e) = db_client.conn(|conn| {
+                            conn.execute("INSERT INTO Messages (user, message) VALUES (?, ?)", [user, message])
+                        }).await {
+                            error!("failed to insert message into db: {e}");
+                        }
                         let user_book = user_book.lock().await;
                         let mut senders = Vec::with_capacity(user_book.len());
                         for (_, sender) in user_book.iter() {
@@ -178,12 +220,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         drop(user_book);
                         for sender in senders {
                             let packet_clone = Arc::clone(&packet);
-                            let _ = sender.send(packet_clone).await;
+                            let _ = sender.send(packet_clone);
                         }
                     }
                     else {
                         // this means that the user has been kicked or the user exited
-                        if let Err(_) = tx.send(Arc::new(data)).await {
+                        if let Err(_) = tx.send(Arc::new(data)) {
                             return;
                         }
                     }
