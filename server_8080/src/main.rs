@@ -3,6 +3,7 @@ use tokio::io::AsyncReadExt;
 use tokio::net::TcpListener;
 use tokio::sync::mpsc::{self, UnboundedSender};
 use tokio::sync::Mutex;
+use tokio::signal::ctrl_c;
 use lib8080_msg::*;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -13,8 +14,9 @@ use std::env::home_dir;
 extern crate log;
 use log::LevelFilter;
 static PORT: OnceLock<u16> = OnceLock::new();
+// static messages send by the server
 static GEPORT_MESSAGE: LazyLock<Packet> = LazyLock::new(|| {
-    Packet::Msg(Message::new("server", &format!("port = {}", PORT.get().unwrap())))
+    Packet::Msg(Message::new("server", &format!("port = {}", PORT.get().expect("port should've been set before first used"))))
 });
 static KICK_MESSAGE: LazyLock<Arc<Packet>> = LazyLock::new(|| {
     Arc::new(Packet::Msg(Message::new("server", "you have been kicked!")))
@@ -26,9 +28,11 @@ static NO_KICK_PREMISION: LazyLock<Packet> = LazyLock::new(|| {
 type UserBook = Arc<Mutex<HashMap<Username, UnboundedSender<Arc<Packet>>>>>;
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // init the logger
     pretty_env_logger::formatted_builder()
         .filter_level(LevelFilter::Info)
         .init();
+    // user_book keeps track of users
     let user_book: UserBook = Arc::new(Mutex::new(HashMap::new()));
     let listener = TcpListener::bind("0.0.0.0:0").await?;
     let port = listener.local_addr()?.port();
@@ -41,15 +45,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     db_client.conn(|conn| {
         conn.execute("CREATE TABLE IF NOT EXISTS Messages(id INTEGER PRIMARY KEY, user TEXT NOT NULL, message TEXT NOT NULL)", ())
     }).await?;
-    let (shutdown_tx, mut shutdown_rx) = mpsc::channel(1);
     info!("connect to port: {port}");
-    // control-c handler
-    tokio::spawn(async move {
-        // bug: program could imedeatly stops if the ctrl_c function fails
-        let _ = tokio::signal::ctrl_c().await;
-        // it doesn't realy matter if the shutdown signal has been sent succsesfully, you can always force quit the server
-        let _ = shutdown_tx.send(()).await;
-    });
     // conection listening thread
     tokio::spawn(async move {
         loop {
@@ -234,7 +230,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             });
         }
     });
-    // the main thread waits for shutdown
-    shutdown_rx.recv().await;
+    // the main thread waits for control-c
+    ctrl_c().await?;
     Ok(())
 }
