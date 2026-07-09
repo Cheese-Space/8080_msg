@@ -211,7 +211,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 loop {
                     // this means the user disconnected suddenly
                     if let Err(e) = reader.read_exact(&mut size).await {
-                        let user = user.write().await;
+                        let user = user.read().await;
                         let username = user.get_username();
                         error!("failed to read packet: {e}\n removing: {username}");
                         let mut user_book = user_book.lock().await;
@@ -221,7 +221,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     let size = u32::from_be_bytes(size);
                     let mut data = vec![0u8; size as usize];
                     if let Err(e) = reader.read_exact(&mut data).await {
-                        let user = user.write().await;
+                        let user = user.read().await;
                         let username = user.get_username();
                         error!("lost connection to cliet: {e}\nwill remove: {username}");
                         let mut user_book = user_book.lock().await;
