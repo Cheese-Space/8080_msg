@@ -13,6 +13,7 @@ use tokio::io::AsyncWriteExt;
 use std::io::{self, Write};
 use std::fmt;
 use std::marker::Unpin;
+use std::str::FromStr;
 // could change into a TinyStr in the future
 /// the type representing a username
 /// 
@@ -51,6 +52,14 @@ impl fmt::Display for Message {
         write!(f, "{}: {}", self.user, self.msg)
     }
 }
+/// error when trying to convert a &str into a UserPrivilege
+#[derive(Debug)]
+pub struct InvalidUserPrivilege;
+impl fmt::Display for InvalidUserPrivilege {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "invalid user privilege given")
+    }
+}
 /// represents what a [`User`] can and can't do
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, Default)]
 pub enum UserPrivilege {
@@ -61,6 +70,17 @@ pub enum UserPrivilege {
     Normal,
     /// read + write + kick + change user privilege
     Admin
+}
+impl FromStr for UserPrivilege {
+    type Err = InvalidUserPrivilege;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "read_only" => Ok(UserPrivilege::ReadOnly),
+            "normal" => Ok(UserPrivilege::Normal),
+            "admin" => Ok(UserPrivilege::Admin),
+            _ => Err(InvalidUserPrivilege)
+        }
+    }
 }
 /// a user
 #[derive(Debug, Clone)]
