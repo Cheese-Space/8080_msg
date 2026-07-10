@@ -1,4 +1,5 @@
 use std::process::ExitCode;
+use std::str::FromStr;
 use clap::Parser;
 use cursive::Cursive;
 use cursive::CursiveExt;
@@ -60,7 +61,7 @@ async fn actual_main() -> Result<(), Box<dyn std::error::Error>> {
                             .child(TextView::new("error: lost connection with server"))
                             .child(Button::new("ok", |siv| siv.quit()))
                     ).title("error"));
-                })).unwrap();
+                })).expect("cursive cb channel should only close when program terminates");
                 return;
             }
             let size_to_read = u32::from_be_bytes(len_buff) as usize;
@@ -72,7 +73,7 @@ async fn actual_main() -> Result<(), Box<dyn std::error::Error>> {
                             .child(TextView::new("error: lost connection with server"))
                             .child(Button::new("ok", |siv| siv.quit()))
                     ).title("error"));
-                })).unwrap();
+                })).expect("cursive cb channel should only close when program terminates");
                 return;
             }
             let contents: Packet = match serde_json::from_slice(&raw_contents) {
@@ -84,7 +85,7 @@ async fn actual_main() -> Result<(), Box<dyn std::error::Error>> {
                                 .child(TextView::new(format!("error: server send malformed data: {e}\nrecieved: {}", String::from_utf8(raw_contents).unwrap())))
                                 .child(Button::new("ok", |siv| {siv.pop_layer();}))
                         ).title("error"));
-                    })).unwrap();
+                    })).expect("cursive cb channel should only close when program terminates");
                     continue;
                 }
             };
@@ -95,7 +96,7 @@ async fn actual_main() -> Result<(), Box<dyn std::error::Error>> {
                 siv.call_on_name("text_buffer", |view: &mut TextView| {
                     view.append(format!("{m}\n"));
                 });
-            })).unwrap();
+            })).expect("cursive cb channel should only close when program terminates");
         }
     });
     let u_clone = args.username.clone();
@@ -109,6 +110,22 @@ async fn actual_main() -> Result<(), Box<dyn std::error::Error>> {
                 "/exit" => Packet::Exit,
                 "/getport" => Packet::GetPort,
                 "/kick" if split_message.len() == 2 => Packet::Kick(split_message[1].to_string()),
+                "/set_privilege" if split_message.len() == 3 => {
+                    let privilege = match UserPrivilege::from_str(split_message[2]) {
+                        Ok(p) => p,
+                        Err(e) => {
+                            cb_cink.send(Box::new(move |siv| {
+                                siv.add_layer(Dialog::new().content(
+                                    LinearLayout::vertical()
+                                        .child(TextView::new(e.to_string()))
+                                        .child(Button::new("ok", |siv| {siv.pop_layer();}))
+                                ).title("error"));
+                            })).expect("cursive cb channel should only close when program terminates");
+                            continue;
+                        }
+                    };
+                    Packet::SetPrivilege(Some(split_message[1].to_string()), privilege)
+                }
                 _ => Packet::Msg(Message::new(&username, &msg))
             };
             if msg.send_async(&mut writer).await.is_err() {
@@ -118,10 +135,10 @@ async fn actual_main() -> Result<(), Box<dyn std::error::Error>> {
                             .child(TextView::new("error: lost connection with server"))
                             .child(Button::new("ok", |siv| {siv.quit();}))
                     ).title("error"));
-                })).unwrap()
+                })).expect("cursive cb channel should only close when program terminates");
             }
             if let Packet::Exit = msg {
-                cb_cink.send(Box::new(|siv| siv.quit())).unwrap();
+                cb_cink.send(Box::new(|siv| siv.quit())).expect("cursive cb channel should only close when program terminates");
                 return;
             }
         }
@@ -134,12 +151,12 @@ async fn actual_main() -> Result<(), Box<dyn std::error::Error>> {
                     return;
                 }
                 let split_content: Vec<&str> = contents.split_whitespace().collect();
-                if !(split_content[0] == "/kick" || split_content[0] == "/getport" || split_content[0] == "/exit") {
+                if !matches!(split_content[0], "/kick" | "/getport" | "/exit" | "/privilege") {
                     siv.call_on_name("text_buffer", |view: &mut TextView| {
                         view.append(format!("me: {contents}\n", ));
                     });
                 }
-                siv.call_on_name("input_field", move |view: &mut EditView| {
+                siv.call_on_name("input_field", |view: &mut EditView| {
                    view.set_content("");
                 });
                 let _ = tx.send(contents.to_string());
