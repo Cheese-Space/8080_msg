@@ -82,6 +82,15 @@ impl FromStr for UserPrivilege {
         }
     }
 }
+impl fmt::Display for UserPrivilege {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match *self {
+            UserPrivilege::ReadOnly => write!(f, "read_only"),
+            UserPrivilege::Normal => write!(f, "normal"),
+            UserPrivilege::Admin => write!(f, "admin")
+        }
+    }
+}
 /// a user
 #[derive(Debug, Clone)]
 pub struct User {
