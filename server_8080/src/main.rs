@@ -28,6 +28,9 @@ static NO_KICK_PREMISION: LazyLock<Packet> = LazyLock::new(|| {
 static NO_CHANGE_PRIVILEGE_PREMISION: LazyLock<Packet> = LazyLock::new(|| {
     Packet::Msg(Message::new("server", "you don't have the premision to change the privilege of other users"))
 });
+static CANT_CHANGE_OWN_PRIVILEGE: LazyLock<Arc<Packet>> = LazyLock::new(|| {
+    Arc::new(Packet::Msg(Message::new("server", "you can't change your own premision")))
+});
 // it sends an Arc, so we don't have to clone when sending a Message to all writer thread
 type UserBook = Arc<Mutex<HashMap<Username, UnboundedSender<Arc<Packet>>>>>;
 #[tokio::main]
@@ -62,12 +65,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             };
             let user_book = Arc::clone(&user_book);
             let db_client = db_client.clone();
-            
             // each connection gets its own thread could be prone to ddos atacks maybe?
+            // todo: maker user limit configurable
             tokio::spawn(async move {
                 let (mut reader, mut writer) = connection.into_split(); 
                 let mut size = [0u8; 4];
-                if let Err(_) = reader.read_exact(&mut size).await {
+                if reader.read_exact(&mut size).await.is_err() {
                     error!("failed to register user");
                     return;
                 }
@@ -92,7 +95,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         user.set_privilege(UserPrivilege::Admin);
                     }
                     let username = user.get_username();
-                    if let Some(_) = user_book.get(username) {
+                    if user_book.get(username).is_some() {
                         error!("failed to register user: an user with the same username alreaady exists");
                         return
                     }
@@ -183,6 +186,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 let username = u.as_ref().expect("we checked if u is None");
                                 if username == user.read().await.get_username() {
                                     // a user shouldn't be able to set his own privilege
+                                    let _ = CANT_CHANGE_OWN_PRIVILEGE.send_async(&mut writer).await;
                                     continue;
                                 }
                                 let sender = match user_book.get(username) {
@@ -198,7 +202,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             }
                             // we know it is a Packet::Msg, if we matched the normal way, we would need to clone the inner message to avoid moving it
                             msg => {
-                                if msg.get_inner_msg().expect("should be a Msg").get_username() == user.write().await.get_username() {
+                                if msg.get_inner_msg().expect("should be a Msg").get_username() == user.read().await.get_username() {
                                     // the client is responsible for displaying its own messages
                                     continue;
                                 }
@@ -246,7 +250,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         }
                         let user_book = user_book.lock().await;
                         let mut senders = Vec::with_capacity(user_book.len());
-                        for (_, sender) in user_book.iter() {
+                        for sender in user_book.values() {
                             senders.push(sender.clone());
                         }
                         let packet = Arc::new(Packet::Msg(m));
@@ -258,11 +262,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
                     else if let Packet::SetPrivilege(None, _) = data {
                         // a user should'nt be able to set his own privilege
+                        let _ = tx.send(Arc::clone(&CANT_CHANGE_OWN_PRIVILEGE));
                         continue;
                     }
                     else {
                         // this means that the user has been kicked or the user exited
-                        if let Err(_) = tx.send(Arc::new(data)) {
+                        if tx.send(Arc::new(data)).is_err() {
                             return;
                         }
                     }
