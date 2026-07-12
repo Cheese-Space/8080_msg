@@ -1,35 +1,50 @@
 use async_sqlite::PoolBuilder;
-use tokio::io::AsyncReadExt;
-use tokio::net::TcpListener;
-use tokio::sync::mpsc::{self, UnboundedSender};
-use tokio::sync::Mutex;
-use tokio::sync::RwLock;
-use tokio::signal::ctrl_c;
 use lib8080_msg::*;
 use std::collections::HashMap;
+use std::env::home_dir;
 use std::sync::Arc;
 use std::sync::LazyLock;
 use std::sync::OnceLock;
-use std::env::home_dir;
+use tokio::io::AsyncReadExt;
+use tokio::net::TcpListener;
+use tokio::signal::ctrl_c;
+use tokio::sync::Mutex;
+use tokio::sync::RwLock;
+use tokio::sync::mpsc::{self, UnboundedSender};
 #[macro_use]
 extern crate log;
 use log::LevelFilter;
 static PORT: OnceLock<u16> = OnceLock::new();
 // static messages send by the server
 static GEPORT_MESSAGE: LazyLock<Packet> = LazyLock::new(|| {
-    Packet::Msg(Message::new("server", &format!("port = {}", PORT.get().expect("port should've been set before first used"))))
+    Packet::Msg(Message::new(
+        "server",
+        &format!(
+            "port = {}",
+            PORT.get()
+                .expect("port should've been set before first used")
+        ),
+    ))
 });
-static KICK_MESSAGE: LazyLock<Arc<Packet>> = LazyLock::new(|| {
-    Arc::new(Packet::Msg(Message::new("server", "you have been kicked!")))
-});
+static KICK_MESSAGE: LazyLock<Arc<Packet>> =
+    LazyLock::new(|| Arc::new(Packet::Msg(Message::new("server", "you have been kicked!"))));
 static NO_KICK_PREMISION: LazyLock<Packet> = LazyLock::new(|| {
-   Packet::Msg(Message::new("server", "you don't have premision to kick people")) 
+    Packet::Msg(Message::new(
+        "server",
+        "you don't have premision to kick people",
+    ))
 });
 static NO_CHANGE_PRIVILEGE_PREMISION: LazyLock<Packet> = LazyLock::new(|| {
-    Packet::Msg(Message::new("server", "you don't have the premision to change the privilege of other users"))
+    Packet::Msg(Message::new(
+        "server",
+        "you don't have the premision to change the privilege of other users",
+    ))
 });
 static CANT_CHANGE_OWN_PRIVILEGE: LazyLock<Arc<Packet>> = LazyLock::new(|| {
-    Arc::new(Packet::Msg(Message::new("server", "you can't change your own premision")))
+    Arc::new(Packet::Msg(Message::new(
+        "server",
+        "you can't change your own premision",
+    )))
 });
 // it sends an Arc, so we don't have to clone when sending a Message to all writer thread
 type UserBook = Arc<Mutex<HashMap<Username, UnboundedSender<Arc<Packet>>>>>;
@@ -48,7 +63,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     db_path.push("8080_msg.db");
     let db_client = PoolBuilder::new()
         .path(format!("{}", db_path.display()))
-        .open().await?;
+        .open()
+        .await?;
     db_client.conn(|conn| {
         conn.execute("CREATE TABLE IF NOT EXISTS Messages(id INTEGER PRIMARY KEY, user TEXT NOT NULL, message TEXT NOT NULL)", ())
     }).await?;
@@ -68,7 +84,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             // each connection gets its own thread could be prone to ddos atacks maybe?
             // todo: maker user limit configurable
             tokio::spawn(async move {
-                let (mut reader, mut writer) = connection.into_split(); 
+                let (mut reader, mut writer) = connection.into_split();
                 let mut size = [0u8; 4];
                 if reader.read_exact(&mut size).await.is_err() {
                     error!("failed to register user");
@@ -96,12 +112,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
                     let username = user.get_username();
                     if user_book.get(username).is_some() {
-                        error!("failed to register user: an user with the same username alreaady exists");
-                        return
+                        error!(
+                            "failed to register user: an user with the same username alreaady exists"
+                        );
+                        return;
                     }
                     user
-                }
-                else {
+                } else {
                     error!("failed to register user: first request wasn't join request`");
                     return;
                 };
@@ -112,11 +129,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let user_read_guard = user.read().await;
                 user_book_guard.insert(user_read_guard.get_username().to_string(), tx_clone);
                 info!("user '{}' joined", user_read_guard.get_username());
-                drop(user_book_guard); 
+                drop(user_book_guard);
                 drop(user_read_guard);
                 let u_book_clone = Arc::clone(&user_book);
-                // writer thread
                 let u_clone = Arc::clone(&user);
+                // these clones are moved into the function which sends the 30 most recent messages to the client
                 let u_clone_2 = Arc::clone(&user);
                 let tx_clone_2 = tx.clone();
                 // send at most 30 most recent messages to the client
@@ -128,7 +145,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         let mut username: String = row.get("user")?;
                         if username.as_str() == user.blocking_read().get_username() {
                             username = String::from("me");
-                        } 
+                        }
                         let message: String = row.get("message")?;
                         Ok(Packet::Msg(Message::new(&username, &message)))
                     })?;
@@ -155,7 +172,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 let _ = GEPORT_MESSAGE.send_async(&mut writer).await;
                             }
                             Packet::Kick(u) => {
-                                if !matches!(user.read().await.get_privilege(), UserPrivilege::Admin) {
+                                if !matches!(
+                                    user.read().await.get_privilege(),
+                                    UserPrivilege::Admin
+                                ) {
                                     let _ = NO_KICK_PREMISION.send_async(&mut writer).await;
                                     continue;
                                 }
@@ -164,7 +184,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     Some(s) => s,
                                     None => {
                                         drop(user_book);
-                                        let msg = Packet::Msg(Message::new("server", &format!("{u} doesn't exist")));
+                                        let msg = Packet::Msg(Message::new(
+                                            "server",
+                                            &format!("{u} doesn't exist"),
+                                        ));
                                         let _ = msg.send_async(&mut writer).await;
                                         continue;
                                     }
@@ -178,8 +201,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     user.write().await.set_privilege(*p);
                                     continue;
                                 }
-                                if !matches!(user.read().await.get_privilege(), UserPrivilege::Admin) {
-                                    let _ = NO_CHANGE_PRIVILEGE_PREMISION.send_async(&mut writer).await;
+                                if !matches!(
+                                    user.read().await.get_privilege(),
+                                    UserPrivilege::Admin
+                                ) {
+                                    let _ =
+                                        NO_CHANGE_PRIVILEGE_PREMISION.send_async(&mut writer).await;
                                     continue;
                                 }
                                 let user_book = user_book.lock().await;
@@ -193,7 +220,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     Some(s) => s,
                                     None => {
                                         drop(user_book);
-                                        let msg = Packet::Msg(Message::new("server", &format!("{username} doesn't exist")));
+                                        let msg = Packet::Msg(Message::new(
+                                            "server",
+                                            &format!("{username} doesn't exist"),
+                                        ));
                                         let _ = msg.send_async(&mut writer).await;
                                         continue;
                                     }
@@ -202,7 +232,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             }
                             // we know it is a Packet::Msg, if we matched the normal way, we would need to clone the inner message to avoid moving it
                             msg => {
-                                if msg.get_inner_msg().expect("should be a Msg").get_username() == user.read().await.get_username() {
+                                if msg.get_inner_msg().expect("should be a Msg").get_username()
+                                    == user.read().await.get_username()
+                                {
                                     // the client is responsible for displaying its own messages
                                     continue;
                                 }
@@ -243,9 +275,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         // we don't add it in the writer thread, because then server messages would be inserted into the db
                         let user = m.get_username().to_string();
                         let message = m.get_message().to_string();
-                        if let Err(e) = db_client.conn(|conn| {
-                            conn.execute("INSERT INTO Messages (user, message) VALUES (?, ?)", [user, message])
-                        }).await {
+                        if let Err(e) = db_client
+                            .conn(|conn| {
+                                conn.execute(
+                                    "INSERT INTO Messages (user, message) VALUES (?, ?)",
+                                    [user, message],
+                                )
+                            })
+                            .await
+                        {
                             error!("failed to insert message into db: {e}");
                         }
                         let user_book = user_book.lock().await;
@@ -259,20 +297,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             let packet_clone = Arc::clone(&packet);
                             let _ = sender.send(packet_clone);
                         }
-                    }
-                    else if let Packet::SetPrivilege(None, _) = data {
+                    } else if let Packet::SetPrivilege(None, _) = data {
                         // a user should'nt be able to set his own privilege
                         let _ = tx.send(Arc::clone(&CANT_CHANGE_OWN_PRIVILEGE));
                         continue;
-                    }
-                    else {
+                    } else {
                         // this means that the user has been kicked or the user exited
                         if tx.send(Arc::new(data)).is_err() {
                             return;
                         }
                     }
-                    
-                }            
+                }
             });
         }
     });

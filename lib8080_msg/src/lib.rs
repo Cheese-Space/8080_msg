@@ -1,22 +1,22 @@
 //! The internal library for server_8080 and tty_8080.  
 //! More usage examples will come when the guide on making a custom client is finished.  
-//! 
+//!
 //! # async
 //! If you want to write a [`Packet`] asyncly, you need to enable the async feature.  
 //! The async feature is not enabled by default.
 #![deny(missing_docs)]
 #![cfg_attr(docsrs, feature(doc_cfg))]
-use serde::Serialize;
 use serde::Deserialize;
-#[cfg(feature = "async")]
-use tokio::io::AsyncWriteExt;
-use std::io::{self, Write};
+use serde::Serialize;
 use std::fmt;
+use std::io::{self, Write};
 use std::marker::Unpin;
 use std::str::FromStr;
+#[cfg(feature = "async")]
+use tokio::io::AsyncWriteExt;
 // could change into a TinyStr in the future
 /// the type representing a username
-/// 
+///
 /// it is not guaranteed that this type will always be a String
 pub type Username = String;
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -25,9 +25,9 @@ pub struct Message {
     /// the user who send the message
     user: Username,
     /// the actual message
-    /// 
+    ///
     /// the message must be valid utf-8
-    msg: String
+    msg: String,
 }
 impl Message {
     #[inline]
@@ -43,7 +43,10 @@ impl Message {
     #[must_use]
     /// create a new message
     pub fn new(user: &str, msg: &str) -> Self {
-        Self { user: user.to_string(), msg: msg.to_string() }
+        Self {
+            user: user.to_string(),
+            msg: msg.to_string(),
+        }
     }
 }
 
@@ -69,7 +72,7 @@ pub enum UserPrivilege {
     /// read + write, is the default privilege
     Normal,
     /// read + write + kick + change user privilege
-    Admin
+    Admin,
 }
 impl FromStr for UserPrivilege {
     type Err = InvalidUserPrivilege;
@@ -78,7 +81,7 @@ impl FromStr for UserPrivilege {
             "read_only" => Ok(UserPrivilege::ReadOnly),
             "normal" => Ok(UserPrivilege::Normal),
             "admin" => Ok(UserPrivilege::Admin),
-            _ => Err(InvalidUserPrivilege)
+            _ => Err(InvalidUserPrivilege),
         }
     }
 }
@@ -87,7 +90,7 @@ impl fmt::Display for UserPrivilege {
         match *self {
             UserPrivilege::ReadOnly => write!(f, "read_only"),
             UserPrivilege::Normal => write!(f, "normal"),
-            UserPrivilege::Admin => write!(f, "admin")
+            UserPrivilege::Admin => write!(f, "admin"),
         }
     }
 }
@@ -97,7 +100,7 @@ pub struct User {
     /// the name of the user
     name: Username,
     /// the privilege of the user, see [`UserPirvilege`]
-    privilege: UserPrivilege
+    privilege: UserPrivilege,
 }
 impl User {
     #[inline]
@@ -119,7 +122,10 @@ impl User {
     /// create a new User
     pub fn new(name: &str, privilege: Option<UserPrivilege>) -> Self {
         let privilege = privilege.unwrap_or_default();
-        Self { name: name.to_string(), privilege }
+        Self {
+            name: name.to_string(),
+            privilege,
+        }
     }
 }
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -137,16 +143,16 @@ pub enum Packet {
     /// server: if None is specified for the user, change the privilege of the current user
     SetPrivilege(Option<Username>, UserPrivilege),
     /// client + server: sends a message to a client or the server
-    Msg(Message)
+    Msg(Message),
 }
 impl Packet {
-    /// send a [`Packet`] to a writer 
+    /// send a [`Packet`] to a writer
     pub fn send<W: Write>(&self, stream: &mut W) -> io::Result<()> {
         let data_as_bytes = Vec::from(self);
         stream.write_all(&data_as_bytes)
     }
     /// send a [`Packet`] to an async writer
-    /// 
+    ///
     /// Note that this function is only available with the async feature enabled.  
     /// Also note that This function only works on async writers which implement tokio's [`AsyncWriteExt`](https://docs.rs/tokio/latest/tokio/io/trait.AsyncWriteExt.html) trait.  
     /// If you want to send a packet to a non-tokio async writer, then you can convert the packet to a [`Vec<u8>`](https://doc.rust-lang.org/std/vec/struct.Vec.html):
@@ -162,13 +168,12 @@ impl Packet {
         stream.write_all(&data_as_bytes).await
     }
     /// get the inner [`Message`] of a [`Packet`]
-    /// 
+    ///
     /// Returns None if self ≠ Packet::Msg.
     pub fn get_inner_msg(&self) -> Option<&Message> {
         if let Packet::Msg(msg) = self {
             Some(msg)
-        }
-        else {
+        } else {
             None
         }
     }
