@@ -1,57 +1,7 @@
-use async_sqlite::PoolBuilder;
-use lib8080_msg::*;
-use std::collections::HashMap;
-use std::env::home_dir;
-use std::sync::Arc;
-use std::sync::LazyLock;
-use std::sync::OnceLock;
-use tokio::io::AsyncReadExt;
-use tokio::net::TcpListener;
-use tokio::signal::ctrl_c;
-use tokio::sync::Mutex;
-use tokio::sync::RwLock;
-use tokio::sync::mpsc::{self, UnboundedSender};
-#[macro_use]
-extern crate log;
-use log::LevelFilter;
-static PORT: OnceLock<u16> = OnceLock::new();
-// static messages send by the server
-static GEPORT_MESSAGE: LazyLock<Packet> = LazyLock::new(|| {
-    Packet::Msg(Message::new(
-        "server",
-        &format!(
-            "port = {}",
-            PORT.get()
-                .expect("port should've been set before first used")
-        ),
-    ))
-});
-static KICK_MESSAGE: LazyLock<Arc<Packet>> =
-    LazyLock::new(|| Arc::new(Packet::Msg(Message::new("server", "you have been kicked!"))));
-static NO_KICK_PREMISION: LazyLock<Packet> = LazyLock::new(|| {
-    Packet::Msg(Message::new(
-        "server",
-        "you don't have premision to kick people",
-    ))
-});
-static NO_SEND_PREMISION: LazyLock<Arc<Packet>> = LazyLock::new(|| {
-    Arc::new(Packet::Msg(Message::new(
-        "server",
-        "you don't have premision to send messages",
-    )))
-});
-static NO_CHANGE_PRIVILEGE_PREMISION: LazyLock<Packet> = LazyLock::new(|| {
-    Packet::Msg(Message::new(
-        "server",
-        "you don't have the premision to change the privilege of other users",
-    ))
-});
-static CANT_CHANGE_OWN_PRIVILEGE: LazyLock<Arc<Packet>> = LazyLock::new(|| {
-    Arc::new(Packet::Msg(Message::new(
-        "server",
-        "you can't change your own premision",
-    )))
-});
+mod prelude;
+mod static_messages;
+use crate::prelude::*;
+use crate::static_messages::*;
 // it sends an Arc, so we don't have to clone when sending a Message to all writer thread
 type UserBook = Arc<Mutex<HashMap<Username, UnboundedSender<Arc<Packet>>>>>;
 #[tokio::main]

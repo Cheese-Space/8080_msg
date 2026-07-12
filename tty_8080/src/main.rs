@@ -1,22 +1,5 @@
-use clap::Parser;
-use color_print::ceprintln;
-use cursive::Cursive;
-use cursive::CursiveExt;
-use cursive::view::Nameable;
-use cursive::view::Resizable;
-use cursive::view::ScrollStrategy;
-use cursive::views::Button;
-use cursive::views::Dialog;
-use cursive::views::EditView;
-use cursive::views::LinearLayout;
-use cursive::views::ScrollView;
-use cursive::views::TextView;
-use lib8080_msg::*;
-use std::process::ExitCode;
-use std::str::FromStr;
-use tokio::io::AsyncReadExt;
-use tokio::net::TcpStream;
-use tokio::sync::mpsc;
+mod prelude;
+use crate::prelude::*;
 #[derive(Parser)]
 #[command(version, about, long_about = None)]
 struct Args {
