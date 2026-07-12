@@ -34,6 +34,12 @@ static NO_KICK_PREMISION: LazyLock<Packet> = LazyLock::new(|| {
         "you don't have premision to kick people",
     ))
 });
+static NO_SEND_PREMISION: LazyLock<Arc<Packet>> = LazyLock::new(|| {
+    Arc::new(Packet::Msg(Message::new(
+        "server",
+        "you don't have premision to send messages",
+    )))
+});
 static NO_CHANGE_PRIVILEGE_PREMISION: LazyLock<Packet> = LazyLock::new(|| {
     Packet::Msg(Message::new(
         "server",
@@ -271,31 +277,37 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         }
                     };
                     if let Packet::Msg(m) = data {
-                        // add it to the database
-                        // we don't add it in the writer thread, because then server messages would be inserted into the db
-                        let user = m.get_username().to_string();
-                        let message = m.get_message().to_string();
-                        if let Err(e) = db_client
-                            .conn(|conn| {
-                                conn.execute(
-                                    "INSERT INTO Messages (user, message) VALUES (?, ?)",
-                                    [user, message],
-                                )
-                            })
-                            .await
-                        {
-                            error!("failed to insert message into db: {e}");
-                        }
-                        let user_book = user_book.lock().await;
-                        let mut senders = Vec::with_capacity(user_book.len());
-                        for sender in user_book.values() {
-                            senders.push(sender.clone());
-                        }
-                        let packet = Arc::new(Packet::Msg(m));
-                        drop(user_book);
-                        for sender in senders {
-                            let packet_clone = Arc::clone(&packet);
-                            let _ = sender.send(packet_clone);
+                        // check if user has premision to send messages
+                        // we do not do this in the writer thread, so that the server and other users can still send messages to tihs users
+                        if !matches!(user.read().await.get_privilege(), UserPrivilege::ReadOnly) {
+                            // add it to the database
+                            // we don't add it in the writer thread, because then server messages would be inserted into the db
+                            let user = m.get_username().to_string();
+                            let message = m.get_message().to_string();
+                            if let Err(e) = db_client
+                                .conn(|conn| {
+                                    conn.execute(
+                                        "INSERT INTO Messages (user, message) VALUES (?, ?)",
+                                        [user, message],
+                                    )
+                                })
+                                .await
+                            {
+                                error!("failed to insert message into db: {e}");
+                            }
+                            let user_book = user_book.lock().await;
+                            let mut senders = Vec::with_capacity(user_book.len());
+                            for sender in user_book.values() {
+                                senders.push(sender.clone());
+                            }
+                            let packet = Arc::new(Packet::Msg(m));
+                            drop(user_book);
+                            for sender in senders {
+                                let packet_clone = Arc::clone(&packet);
+                                let _ = sender.send(packet_clone);
+                            }
+                        } else {
+                            let _ = tx.send(Arc::clone(&NO_SEND_PREMISION));
                         }
                     } else if let Packet::SetPrivilege(None, _) = data {
                         // a user should'nt be able to set his own privilege
