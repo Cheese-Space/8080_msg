@@ -163,6 +163,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     let _ = packet.send_async(&mut writer).await;
                                     continue;
                                 }
+                                let username = u.as_ref().expect("we checked if u is None");
+                                // we check the username first, because if the privilege of the user is not equal to admin, then his message wouldnt show up
+                                if username == user.read().await.get_username() {
+                                    // a user shouldn't be able to set his own privilege
+                                    let _ = CANT_CHANGE_OWN_PRIVILEGE.send_async(&mut writer).await;
+                                    continue;
+                                }
                                 if !matches!(
                                     user.read().await.get_privilege(),
                                     UserPrivilege::Admin
@@ -172,12 +179,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     continue;
                                 }
                                 let user_book = user_book.lock().await;
-                                let username = u.as_ref().expect("we checked if u is None");
-                                if username == user.read().await.get_username() {
-                                    // a user shouldn't be able to set his own privilege
-                                    let _ = CANT_CHANGE_OWN_PRIVILEGE.send_async(&mut writer).await;
-                                    continue;
-                                }
                                 let sender = match user_book.get(username) {
                                     Some(s) => s,
                                     None => {
