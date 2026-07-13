@@ -664,7 +664,7 @@ checksum = "bbd2bcb4c963f2ddae06a2efc7e9f3591312473c50c6685e1f298068316e66fe"
 
 [[package]]
 name = "lib8080_msg"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "serde",
  "serde_json",
@@ -1061,7 +1061,7 @@ dependencies = [
 
 [[package]]
 name = "server_8080"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "async-sqlite",
  "lib8080_msg",
@@ -1224,7 +1224,7 @@ dependencies = [
 
 [[package]]
 name = "tty_8080"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "clap",
  "color-print",
