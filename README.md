@@ -29,18 +29,18 @@ And last but not least tty_8080: the official terminal client of the 8080_msg pr
 The interface is kinda ugly for now, but will hopefully be updated in the future.  
 
 ## roadmap for v1.0.0 (new things may be added in the future)
-1. working prototype of all the components [x]
-2. database for storing message history [x]
-3. file transfers [ ]
-4. encryption with tls [ ]
-5. 'upgrade' the look of tty_8080 [ ]
-6. some form of authentication [ ]
-7. have multiple rooms in one server [ ]
-8. add software for managing the server [ ]
-9. add presistent user profile in tty_8080 [ ]
-10. create a guide for making a custom client [ ] 
-11. (optional) create a simple gui client [ ]
-12. (optional) create a simple web client [ ]
+1. [x] working prototype of all the components
+2. [x] database for storing message history
+3. [ ] file transfers 
+4. [ ] encryption with tls
+5. [ ] 'upgrade' the look of tty_8080
+6. [ ] some form of authentication
+7. [ ] have multiple rooms in one server
+8. [ ] add software for managing the server
+9. [ ] add presistent user profile in tty_8080
+10. [ ] create a guide for making a custom client 
+11. [ ] (optional) create a simple gui client
+12. [ ] (optional) create a simple web client
   
 ## the protocol  
 more info about the custom network protocol used coming (soon)!  
