@@ -154,7 +154,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             }
                             Packet::SetPrivilege(u, p) => {
                                 if u.is_none() {
-                                    user.write().await.set_privilege(*p);
+                                    let privilege = *p;
+                                    user.write().await.set_privilege(privilege);
+                                    let packet = Arc::new(Packet::Msg(Message::new(
+                                        "server",
+                                        &format!("your privilege is now: {privilege}"),
+                                    )));
+                                    let _ = packet.send_async(&mut writer).await;
                                     continue;
                                 }
                                 if !matches!(
