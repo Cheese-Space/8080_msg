@@ -183,7 +183,7 @@ async fn actual_main() -> Result<(), Box<dyn std::error::Error>> {
                                     contents.split_whitespace().collect();
                                 if !matches!(
                                     split_content[0],
-                                    "/kick" | "/getport" | "/exit" | "/privilege"
+                                    "/kick" | "/getport" | "/exit" | "/set_privilege"
                                 ) {
                                     siv.call_on_name("text_buffer", |view: &mut TextView| {
                                         view.append(format!("me: {contents}\n",));
