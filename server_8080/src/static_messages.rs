@@ -42,3 +42,9 @@ pub static CANT_CHANGE_OWN_PRIVILEGE: LazyLock<Arc<Packet>> = LazyLock::new(|| {
         "you can't change your own premision",
     )))
 });
+pub static CANT_KICK_YOURSELF: LazyLock<Packet> = LazyLock::new(|| {
+    Packet::Msg(Message::new(
+        "server",
+        "you can't kick yourself\nhint if you want to exit, enter /exit or similar",
+    ))
+});
