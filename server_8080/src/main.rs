@@ -2,6 +2,19 @@ mod prelude;
 mod static_messages;
 use crate::prelude::*;
 use crate::static_messages::*;
+/// checks if a username is valid
+// you normaly shoudn't return string literals as an Err, but this is only used in one place anyway so it is fine
+fn username_check(username: &str) -> Result<(), &'static str> {
+    match username.trim() {
+        "" => Err("invalid username: an empty username isn't allowed"),
+        "me" => Err("invalid username: me"),
+        "server" => Err("invalid username: server"),
+        with_space if with_space.contains(' ') => {
+            Err("invalid username: a username isn't allowed to have spaces")
+        }
+        _ => Ok(()),
+    }
+}
 // it sends an Arc, so we don't have to clone when sending a Message to all writer thread
 type UserBook = Arc<Mutex<HashMap<Username, UnboundedSender<Arc<Packet>>>>>;
 #[tokio::main]
@@ -61,6 +74,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 };
                 // first packet should always be the join request, if not the user won't be registered
                 let user = if let Packet::Join(u) = data {
+                    if let Err(e) = username_check(&u) {
+                        error!("failed to register user: {e}");
+                        return;
+                    }
                     let mut user = User::new(&u, None);
                     let user_book = user_book.lock().await;
                     if user_book.is_empty() {
