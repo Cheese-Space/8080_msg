@@ -13,6 +13,17 @@ struct Args {
     /// the username to be used
     username: Username,
 }
+/// decides if the message provided should or shouldn't be displayed
+fn should_display_text(split_text: &[&str]) -> bool {
+    let len = split_text.len();
+    // we know that the message is never empty, so index zero should always be valid
+    match split_text[0] {
+        "/exit" | "/getport" => false,
+        "/kick" if len == 2 => false,
+        "/set_privilege" if len == 3 => false,
+        _ => true,
+    }
+}
 #[tokio::main]
 async fn main() -> ExitCode {
     // error handeler
@@ -181,10 +192,7 @@ async fn actual_main() -> Result<(), Box<dyn std::error::Error>> {
                                 }
                                 let split_content: Vec<&str> =
                                     contents.split_whitespace().collect();
-                                if !matches!(
-                                    split_content[0],
-                                    "/kick" | "/getport" | "/exit" | "/set_privilege"
-                                ) {
+                                if should_display_text(&split_content) {
                                     siv.call_on_name("text_buffer", |view: &mut TextView| {
                                         view.append(format!("me: {contents}\n",));
                                     });
