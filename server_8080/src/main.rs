@@ -128,13 +128,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 let _ = GEPORT_MESSAGE.send_async(&mut writer).await;
                             }
                             Packet::Kick(u) => {
-                                if !matches!(
-                                    user.read().await.get_privilege(),
-                                    UserPrivilege::Admin
-                                ) {
+                                let user_guard = user.read().await;
+                                if user_guard.get_username() == u {
+                                    drop(user_guard);
+                                    let _ = CANT_KICK_YOURSELF.send_async(&mut writer).await;
+                                    continue;
+                                }
+                                if !matches!(user_guard.get_privilege(), UserPrivilege::Admin) {
+                                    drop(user_guard);
                                     let _ = NO_KICK_PREMISION.send_async(&mut writer).await;
                                     continue;
                                 }
+                                drop(user_guard);
                                 let mut user_book = user_book.lock().await;
                                 let sender = match user_book.remove(u) {
                                     Some(s) => s,
