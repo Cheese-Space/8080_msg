@@ -33,17 +33,19 @@ The interface is kinda ugly for now, but will hopefully be updated in the future
 2. [x] database for storing message history
 3. [ ] file transfers 
 4. [ ] encryption with tls
-5. [ ] 'upgrade' the look of tty_8080
-6. [ ] some form of authentication
-7. [ ] have multiple rooms in one server
-8. [ ] add software for managing the server
-9. [ ] add presistent user profile in tty_8080
-10. [ ] create a guide for making a custom client 
-11. [ ] (optional) create a simple gui client
-12. [ ] (optional) create a simple web client
+5. [ ] add some sort of private messaging (i.e. a message only readable by one user)
+6. [ ] 'upgrade' the look of tty_8080
+7. [ ] some form of authentication
+8. [ ] have multiple rooms in one server
+9. [ ] add software for managing the server
+10. [ ] add presistent user profile in tty_8080
+11. [ ] create a guide for making a custom client 
+12. [ ] (optional) create a simple gui client
+13. [ ] (optional) create a simple web client
   
 ## the protocol  
-more info about the custom network protocol used coming (soon)!  
+More info about the custom network protocol used coming (soon)!  
+Currently data is just converted into json, but a different format will come before stable, so that the protocol can be language agnostic.  
   
 ## building a custom client  
 coming (soon)!  
