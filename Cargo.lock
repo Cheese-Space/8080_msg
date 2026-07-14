@@ -1061,7 +1061,7 @@ dependencies = [
 
 [[package]]
 name = "server_8080"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "async-sqlite",
  "lib8080_msg",
@@ -1224,7 +1224,7 @@ dependencies = [
 
 [[package]]
 name = "tty_8080"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "clap",
  "color-print",
