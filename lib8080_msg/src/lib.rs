@@ -55,6 +55,26 @@ impl fmt::Display for Message {
         write!(f, "{}: {}", self.user, self.msg)
     }
 }
+/// a file send by a user
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct UserFile {
+    data: Vec<u8>,
+    file_extension: Option<String>,
+    name: String,
+    created: Option<String>,
+    last_modified: Option<String>,
+}
+/// a message with a file
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct FileTransfer {
+    msg: Message,
+    file: UserFile,
+}
+impl fmt::Display for FileTransfer {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.msg)
+    }
+}
 /// error when trying to convert a &str into a UserPrivilege
 #[derive(Debug)]
 pub struct InvalidUserPrivilege;
@@ -144,6 +164,8 @@ pub enum Packet {
     SetPrivilege(Option<Username>, UserPrivilege),
     /// client + server: sends a message to a client or the server
     Msg(Message),
+    /// client: send a file to other clients
+    File(FileTransfer),
 }
 impl Packet {
     /// send a [`Packet`] to a writer
