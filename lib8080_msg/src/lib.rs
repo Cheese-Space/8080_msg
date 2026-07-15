@@ -80,7 +80,7 @@ impl fmt::Display for FileTransfer {
 pub struct InvalidUserPrivilege<'a>(&'a str);
 impl fmt::Display for InvalidUserPrivilege<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "invalid user privilege given")
+        write!(f, "{} is not a valid user privilege", self.0)
     }
 }
 /// represents what a [`User`] can and can't do
