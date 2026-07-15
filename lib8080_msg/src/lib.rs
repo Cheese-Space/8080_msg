@@ -77,8 +77,8 @@ impl fmt::Display for FileTransfer {
 }
 /// error when trying to convert a &str into a UserPrivilege
 #[derive(Debug)]
-pub struct InvalidUserPrivilege;
-impl fmt::Display for InvalidUserPrivilege {
+pub struct InvalidUserPrivilege<'a>(&'a str);
+impl fmt::Display for InvalidUserPrivilege<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "invalid user privilege given")
     }
@@ -94,14 +94,14 @@ pub enum UserPrivilege {
     /// read + write + kick + change user privilege
     Admin,
 }
-impl FromStr for UserPrivilege {
-    type Err = InvalidUserPrivilege;
+impl<'a> FromStr for UserPrivilege {
+    type Err = InvalidUserPrivilege<'a>;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
             "read_only" => Ok(UserPrivilege::ReadOnly),
             "normal" => Ok(UserPrivilege::Normal),
             "admin" => Ok(UserPrivilege::Admin),
-            _ => Err(InvalidUserPrivilege),
+            _ => Err(InvalidUserPrivilege(s)),
         }
     }
 }
