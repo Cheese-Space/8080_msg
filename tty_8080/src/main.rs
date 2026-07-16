@@ -123,16 +123,17 @@ async fn actual_main() -> Result<(), Box<dyn std::error::Error>> {
                 "/getport" => Packet::GetPort,
                 "/kick" if split_message.len() == 2 => Packet::Kick(split_message[1].to_string()),
                 "/set_privilege" if split_message.len() == 3 => {
-                    let privilege = match UserPrivilege::from_str(split_message[2]) {
+                    let privilege = match UserPrivilege::try_from(split_message[2]) {
                         Ok(p) => p,
                         Err(e) => {
+                            let e = e.to_string();
                             cb_cink
                                 .send(Box::new(move |siv| {
                                     siv.add_layer(
                                         Dialog::new()
                                             .content(
                                                 LinearLayout::vertical()
-                                                    .child(TextView::new(e.to_string()))
+                                                    .child(TextView::new(e))
                                                     .child(Button::new("ok", |siv| {
                                                         siv.pop_layer();
                                                     })),

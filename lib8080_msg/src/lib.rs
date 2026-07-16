@@ -10,8 +10,8 @@ use serde::Deserialize;
 use serde::Serialize;
 use std::fmt;
 use std::io::{self, Write};
+#[cfg(feature = "async")]
 use std::marker::Unpin;
-use std::str::FromStr;
 #[cfg(feature = "async")]
 use tokio::io::AsyncWriteExt;
 // could change into a TinyStr in the future
@@ -94,14 +94,14 @@ pub enum UserPrivilege {
     /// read + write + kick + change user privilege
     Admin,
 }
-impl<'a> FromStr for UserPrivilege {
-    type Err = InvalidUserPrivilege<'a>;
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
+impl<'a> TryFrom<&'a str> for UserPrivilege {
+    type Error = InvalidUserPrivilege<'a>;
+    fn try_from(value: &'a str) -> Result<Self, Self::Error> {
+        match value {
             "read_only" => Ok(UserPrivilege::ReadOnly),
             "normal" => Ok(UserPrivilege::Normal),
             "admin" => Ok(UserPrivilege::Admin),
-            _ => Err(InvalidUserPrivilege(s)),
+            _ => Err(InvalidUserPrivilege(value)),
         }
     }
 }

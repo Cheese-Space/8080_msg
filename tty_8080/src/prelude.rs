@@ -15,7 +15,6 @@ pub use cursive::views::ScrollView;
 pub use cursive::views::TextView;
 pub use lib8080_msg::*;
 pub use std::process::ExitCode;
-pub use std::str::FromStr;
 pub use tokio::io::AsyncReadExt;
 pub use tokio::net::TcpStream;
 pub use tokio::sync::mpsc;
