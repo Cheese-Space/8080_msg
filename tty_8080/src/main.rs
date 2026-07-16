@@ -13,13 +13,44 @@ struct Args {
     /// the username to be used
     username: Username,
 }
+trait ErrorString: Into<StyledString> + Send + 'static {}
+impl<T: Into<StyledString> + Send + 'static> ErrorString for T {}
+type CursiveCallBack = Box<dyn FnOnce(&mut Cursive) + Send + 'static>;
+/// create a new error which won't exit
+fn non_fatal_error<S: ErrorString>(text: S) -> CursiveCallBack {
+    Box::new(|siv| {
+        siv.add_layer(
+            Dialog::new()
+                .content(TextView::new(text))
+                .button("ok", |siv| {
+                    siv.pop_layer();
+                })
+                .title("error")
+                .h_align(HAlign::Center),
+        );
+    })
+}
+/// create a new error which will exit
+fn fatal_error<S: ErrorString>(text: S) -> CursiveCallBack {
+    Box::new(|siv| {
+        siv.add_layer(
+            Dialog::new()
+                .content(TextView::new(text))
+                .button("ok", |siv| {
+                    siv.quit();
+                })
+                .title("error")
+                .h_align(HAlign::Center),
+        );
+    })
+}
 /// decides if the message provided should or shouldn't be displayed
 fn should_display_text(split_text: &[&str]) -> bool {
     let len = split_text.len();
     // we know that the message is never empty, so index zero should always be valid
     match split_text[0] {
         "/exit" | "/getport" => false,
-        "/kick" if len == 2 => false,
+        "/kick" | "file" if len == 2 => false,
         "/set_privilege" if len == 3 => false,
         _ => true,
     }
@@ -54,17 +85,7 @@ async fn actual_main() -> Result<(), Box<dyn std::error::Error>> {
             // only errors on early eof
             if reader.read_exact(&mut len_buff).await.is_err() {
                 cb_cink
-                    .send(Box::new(|siv| {
-                        siv.add_layer(
-                            Dialog::new()
-                                .content(
-                                    LinearLayout::vertical()
-                                        .child(TextView::new("error: lost connection with server"))
-                                        .child(Button::new("ok", |siv| siv.quit())),
-                                )
-                                .title("error"),
-                        );
-                    }))
+                    .send(fatal_error("error: lost connection with server"))
                     .expect("cursive cb channel should only close when program terminates");
                 return;
             }
@@ -72,30 +93,19 @@ async fn actual_main() -> Result<(), Box<dyn std::error::Error>> {
             let mut raw_contents: Vec<u8> = vec![0; size_to_read];
             if reader.read_exact(&mut raw_contents).await.is_err() {
                 cb_cink
-                    .send(Box::new(|siv: &mut Cursive| {
-                        siv.add_layer(
-                            Dialog::new()
-                                .content(
-                                    LinearLayout::vertical()
-                                        .child(TextView::new("error: lost connection with server"))
-                                        .child(Button::new("ok", |siv| siv.quit())),
-                                )
-                                .title("error"),
-                        );
-                    }))
+                    .send(fatal_error("error: lost connection with server"))
                     .expect("cursive cb channel should only close when program terminates");
                 return;
             }
             let contents: Packet = match serde_json::from_slice(&raw_contents) {
                 Ok(c) => c,
                 Err(e) => {
-                    cb_cink.send(Box::new(move |siv| {
-                        siv.add_layer(Dialog::new().content(
-                            LinearLayout::vertical()
-                                .child(TextView::new(format!("error: server send malformed data: {e}\nrecieved: {}", String::from_utf8(raw_contents).unwrap())))
-                                .child(Button::new("ok", |siv| {siv.pop_layer();}))
-                        ).title("error"));
-                    })).expect("cursive cb channel should only close when program terminates");
+                    cb_cink
+                        .send(non_fatal_error(format!(
+                            "error: server send malformed data: {e}\nrecieved: {:?}",
+                            raw_contents
+                        )))
+                        .expect("cursive cb channel should only close when program terminates");
                     continue;
                 }
             };
@@ -127,23 +137,9 @@ async fn actual_main() -> Result<(), Box<dyn std::error::Error>> {
                         Ok(p) => p,
                         Err(e) => {
                             let e = e.to_string();
-                            cb_cink
-                                .send(Box::new(move |siv| {
-                                    siv.add_layer(
-                                        Dialog::new()
-                                            .content(
-                                                LinearLayout::vertical()
-                                                    .child(TextView::new(e))
-                                                    .child(Button::new("ok", |siv| {
-                                                        siv.pop_layer();
-                                                    })),
-                                            )
-                                            .title("error"),
-                                    );
-                                }))
-                                .expect(
-                                    "cursive cb channel should only close when program terminates",
-                                );
+                            cb_cink.send(non_fatal_error(format!("error: {e}"))).expect(
+                                "cursive cb channel should only close when program terminates",
+                            );
                             continue;
                         }
                     };
@@ -153,20 +149,9 @@ async fn actual_main() -> Result<(), Box<dyn std::error::Error>> {
             };
             if msg.send_async(&mut writer).await.is_err() {
                 cb_cink
-                    .send(Box::new(|siv| {
-                        siv.add_layer(
-                            Dialog::new()
-                                .content(
-                                    LinearLayout::vertical()
-                                        .child(TextView::new("error: lost connection with server"))
-                                        .child(Button::new("ok", |siv| {
-                                            siv.quit();
-                                        })),
-                                )
-                                .title("error"),
-                        );
-                    }))
+                    .send(fatal_error("error: lost connection with server"))
                     .expect("cursive cb channel should only close when program terminates");
+                return;
             }
             if let Packet::Exit = msg {
                 cb_cink
