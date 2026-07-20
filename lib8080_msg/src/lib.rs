@@ -8,10 +8,17 @@
 #![cfg_attr(docsrs, feature(doc_cfg))]
 use serde::Deserialize;
 use serde::Serialize;
+use std::ffi::OsStr;
 use std::fmt;
+use std::fs;
+use std::io::ErrorKind;
 use std::io::{self, Write};
 #[cfg(feature = "async")]
 use std::marker::Unpin;
+use std::path::Path;
+use std::time::SystemTime;
+#[cfg(feature = "async")]
+use tokio::fs as async_fs;
 #[cfg(feature = "async")]
 use tokio::io::AsyncWriteExt;
 // could change into a TinyStr in the future
@@ -61,8 +68,61 @@ pub struct UserFile {
     data: Vec<u8>,
     file_extension: Option<String>,
     name: String,
-    created: Option<String>,
-    last_modified: Option<String>,
+    created: Option<SystemTime>,
+    last_modified: Option<SystemTime>,
+}
+impl UserFile {
+    /// create a new UserFile
+    pub fn new<P: AsRef<OsStr> + ?Sized>(path: &P) -> io::Result<Self> {
+        let path = Path::new(path);
+        let file_extension = path.extension().map(|s| format!("{}", s.display()));
+        let name = match path.file_name() {
+            Some(s) => format!("{}", s.display()),
+            None => return Err(ErrorKind::InvalidFilename.into()),
+        };
+        let metadata = fs::metadata(path)?;
+        if !metadata.is_file() {
+            return Err(ErrorKind::IsADirectory.into());
+        }
+        let created = metadata.created().ok();
+        let last_modified = metadata.modified().ok();
+        let data = fs::read(path)?;
+        Ok(Self {
+            data,
+            file_extension,
+            name,
+            created,
+            last_modified,
+        })
+    }
+    #[cfg(feature = "async")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "async")))]
+    /// create a new UserFile asyncly
+    ///
+    /// Note that this function is only availible with the async feature enabled.  
+    /// Also note that this function only works if you use tokio as the async runtime.
+    pub async fn new_async<P: AsRef<OsStr> + ?Sized>(path: &P) -> io::Result<Self> {
+        let path = Path::new(path);
+        let file_extension = path.extension().map(|s| format!("{}", s.display()));
+        let name = match path.file_name() {
+            Some(s) => format!("{}", s.display()),
+            None => return Err(ErrorKind::InvalidFilename.into()),
+        };
+        let metadata = async_fs::metadata(path).await?;
+        if !metadata.is_file() {
+            return Err(ErrorKind::IsADirectory.into());
+        }
+        let created = metadata.created().ok();
+        let last_modified = metadata.modified().ok();
+        let data = async_fs::read(path).await?;
+        Ok(Self {
+            data,
+            file_extension,
+            name,
+            created,
+            last_modified,
+        })
+    }
 }
 /// a message with a file
 #[derive(Serialize, Deserialize, Debug, Clone)]
