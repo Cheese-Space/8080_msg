@@ -68,7 +68,7 @@ pub struct UserFile {
     data: Vec<u8>,
     file_extension: Option<String>,
     name: String,
-    created: Option<SystemTime>,
+    accessed: Option<SystemTime>,
     last_modified: Option<SystemTime>,
 }
 impl UserFile {
@@ -84,14 +84,14 @@ impl UserFile {
         if !metadata.is_file() {
             return Err(ErrorKind::IsADirectory.into());
         }
-        let created = metadata.created().ok();
+        let accessed = metadata.accessed().ok();
         let last_modified = metadata.modified().ok();
         let data = fs::read(path)?;
         Ok(Self {
             data,
             file_extension,
             name,
-            created,
+            accessed,
             last_modified,
         })
     }
@@ -112,14 +112,14 @@ impl UserFile {
         if !metadata.is_file() {
             return Err(ErrorKind::IsADirectory.into());
         }
-        let created = metadata.created().ok();
+        let accessed = metadata.accessed().ok();
         let last_modified = metadata.modified().ok();
         let data = async_fs::read(path).await?;
         Ok(Self {
             data,
             file_extension,
             name,
-            created,
+            accessed,
             last_modified,
         })
     }
