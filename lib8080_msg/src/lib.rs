@@ -135,6 +135,12 @@ impl fmt::Display for FileTransfer {
         write!(f, "{}", self.msg)
     }
 }
+impl FileTransfer {
+    /// create a new FileTransfer
+    pub fn new(msg: Message, file: UserFile) -> Self {
+        Self { msg, file }
+    }
+}
 /// error when trying to convert a &str into a UserPrivilege
 #[derive(Debug)]
 pub struct InvalidUserPrivilege<'a>(&'a str);
