@@ -10,7 +10,7 @@ use serde::Deserialize;
 use serde::Serialize;
 use std::ffi::OsStr;
 use std::fmt;
-use std::fs;
+use std::fs::{self, File};
 use std::io::ErrorKind;
 use std::io::{self, Write};
 #[cfg(feature = "async")]
@@ -18,7 +18,7 @@ use std::marker::Unpin;
 use std::path::Path;
 use std::time::SystemTime;
 #[cfg(feature = "async")]
-use tokio::fs as async_fs;
+use tokio::fs::{self as async_fs, File as AsyncFile};
 #[cfg(feature = "async")]
 use tokio::io::AsyncWriteExt;
 // could change into a TinyStr in the future
@@ -139,6 +139,10 @@ impl FileTransfer {
     /// create a new FileTransfer
     pub fn new(msg: Message, file: UserFile) -> Self {
         Self { msg, file }
+    }
+    /// get a refrence to the inner file
+    pub fn get_file(&self) -> &UserFile {
+        &self.file
     }
 }
 /// error when trying to convert a &str into a UserPrivilege
