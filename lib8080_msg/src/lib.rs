@@ -160,6 +160,14 @@ impl UserFile {
         file.set_times(times.set_accessed(accsessed).set_modified(modified))?;
         Ok(())
     }
+    /// get the file extension of the file
+    pub fn extension(&self) -> Option<&str> {
+        self.file_extension.as_ref().map(|s| s.as_str())
+    }
+    /// get the name of the file
+    pub fn name(&self) -> &str {
+        &self.name
+    }
 }
 /// a message with a file
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -180,6 +188,10 @@ impl FileTransfer {
     /// get a refrence to the inner file
     pub fn get_file(&self) -> &UserFile {
         &self.file
+    }
+    /// get a refrence to the inner message
+    pub fn get_message(&self) -> &Message {
+        &self.msg
     }
 }
 /// error when trying to convert a &str into a UserPrivilege
