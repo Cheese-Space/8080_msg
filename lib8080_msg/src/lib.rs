@@ -10,12 +10,13 @@ use serde::Deserialize;
 use serde::Serialize;
 use std::ffi::OsStr;
 use std::fmt;
-use std::fs::{self, File};
+use std::fs::{self, File, FileTimes};
 use std::io::ErrorKind;
 use std::io::{self, Write};
 #[cfg(feature = "async")]
 use std::marker::Unpin;
 use std::path::Path;
+use std::path::PathBuf;
 use std::time::SystemTime;
 #[cfg(feature = "async")]
 use tokio::fs::{self as async_fs, File as AsyncFile};
@@ -122,6 +123,42 @@ impl UserFile {
             accessed,
             last_modified,
         })
+    }
+    /// write a UserFile to disk
+    pub fn write_to_disk(&self, path: &mut PathBuf) -> io::Result<()> {
+        if !path.is_dir() {
+            return Err(ErrorKind::NotADirectory.into());
+        }
+        path.push(&self.name);
+        let mut file = File::create_new(path)?;
+        file.write_all(&self.data)?;
+        let times = FileTimes::new();
+        let accsessed = self.accessed.unwrap_or_else(|| SystemTime::now());
+        let modified = self.last_modified.unwrap_or_else(|| SystemTime::now());
+        file.set_times(times.set_accessed(accsessed).set_modified(modified))?;
+        Ok(())
+    }
+    #[cfg(feature = "async")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "async")))]
+    /// write a UserFile to disk asyncly
+    ///
+    /// Note that this function is only availible with the async feature enabled.  
+    /// Also note that this function only works if you use tokio as the async runtime.
+    pub async fn write_to_disk_async(&self, path: &mut PathBuf) -> io::Result<()> {
+        if !path.is_dir() {
+            return Err(ErrorKind::NotADirectory.into());
+        }
+        path.push(&self.name);
+        let mut file = AsyncFile::create_new(path).await?;
+        file.write_all(&self.data).await?;
+        file.flush().await?;
+        // we have to turn it into a std File, because tokio's File struct doesn't have a set_times function
+        let file = file.into_std().await;
+        let times = FileTimes::new();
+        let accsessed = self.accessed.unwrap_or_else(|| SystemTime::now());
+        let modified = self.last_modified.unwrap_or_else(|| SystemTime::now());
+        file.set_times(times.set_accessed(accsessed).set_modified(modified))?;
+        Ok(())
     }
 }
 /// a message with a file
