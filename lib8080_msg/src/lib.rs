@@ -60,7 +60,7 @@ impl Message {
 
 impl fmt::Display for Message {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}: {}", self.user, self.msg)
+        write!(f, "{}", self.msg)
     }
 }
 /// a file send by a user
