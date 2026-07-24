@@ -96,7 +96,7 @@ async fn actual_main() -> Result<(), Box<dyn std::error::Error>> {
                     .expect("cursive cb channel should only close when program terminates");
                 return;
             }
-            let contents: Packet = match serde_json::from_slice(&raw_contents) {
+            let content: Packet = match serde_json::from_slice(&raw_contents) {
                 Ok(c) => c,
                 Err(e) => {
                     cb_cink
@@ -108,13 +108,81 @@ async fn actual_main() -> Result<(), Box<dyn std::error::Error>> {
                     continue;
                 }
             };
-            let Packet::Msg(m) = contents else {
-                unreachable!("users can only send messages to eachother");
+            let m = match content {
+                Packet::Msg(m) => m,
+                Packet::File(f) => {
+                    let cb_cink = cb_cink.clone();
+                    let (sender, mut reciever) = mpsc::unbounded_channel::<PathBuf>();
+                    let text = Arc::new(format!(
+                        "{} send you a file named: {}\n{f}",
+                        f.get_message().get_username(),
+                        f.get_file().name()
+                    ));
+                    // we handle file writes in a different thread so we can still recieve messages
+                    tokio::spawn(async move {
+                        loop {
+                            let text = Arc::clone(&text);
+                            let sender = sender.clone();
+                            let cb_clone = cb_cink.clone();
+                            cb_cink
+                                .send(Box::new(move |siv| {
+                                    siv.add_layer(
+                                        Dialog::new()
+                                            .content(
+                                                LinearLayout::vertical()
+                                                    .child(TextView::new(text.as_str()))
+                                                    .child(
+                                                        EditView::new().with_name("input_file_write"),
+                                                    ),
+                                            )
+                                            .button("write to disk", move |siv| {
+                                                let mut path = PathBuf::new();
+                                                siv.call_on_name(
+                                                    "input_file_write",
+                                                    |view: &mut EditView| {
+                                                        let text = view.get_content();
+                                                        if text.trim().is_empty() {
+                                                            let error = non_fatal_error("no path provided");
+                                                            cb_clone.send(Box::new(error)).expect("cursive cb channel should only close when program terminates");
+                                                            return;
+                                                        }
+                                                        path = PathBuf::from(text.as_str());
+                                                    },
+                                                );
+                                                sender.send(path).expect("reciever shouldn't have closed yet");
+                                                cb_clone.send(Box::new(|siv| {
+                                                    siv.focus_name("main").expect("should be found");
+                                                }))
+                                                    .expect("cursive cb channel should only close when program terminates");
+                                            })
+                                            .dismiss_button("cancel")
+                                            .with_name("got_file_dialog")
+                                    );
+                                }))
+                                .expect("cursive cb channel should only close when program terminates");
+                            let mut path = match reciever.recv().await {
+                                Some(p) => p,
+                                None => break, // this means cancel was pressed
+                            };
+                            if let Err(e) = f.get_file().write_to_disk_async(&mut path).await {
+                                let error = non_fatal_error(format!("error: {e}"));
+                                cb_cink.send(Box::new(move |siv| {
+                                    siv.focus_name("got_file_dialog").expect("should be found");
+                                    error(siv);
+                                })).expect("cursive cb channel should only close when program terminates");
+                                continue;
+                            }
+                            break;
+                        }
+                    });
+                    continue;
+                }
+                _ => unreachable!("users can only send files and messages to other users"),
             };
             cb_cink
                 .send(Box::new(move |siv| {
                     siv.call_on_name("text_buffer", |view: &mut TextView| {
-                        view.append(format!("{m}\n"));
+                        view.append(format!("{}: {m}\n", m.get_username()));
                     });
                 }))
                 .expect("cursive cb channel should only close when program terminates");
@@ -273,7 +341,8 @@ async fn actual_main() -> Result<(), Box<dyn std::error::Error>> {
             )
             .title("tty_8080")
             .full_height()
-            .full_width(),
+            .full_width()
+            .with_name("main"),
     );
     siv.run();
     Ok(())

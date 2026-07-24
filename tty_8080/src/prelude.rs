@@ -15,6 +15,7 @@ pub use cursive::views::LinearLayout;
 pub use cursive::views::ScrollView;
 pub use cursive::views::TextView;
 pub use lib8080_msg::*;
+pub use std::path::PathBuf;
 pub use std::process::ExitCode;
 pub use std::sync::Arc;
 pub use std::sync::Mutex as StdMutex;
