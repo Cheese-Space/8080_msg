@@ -215,9 +215,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 };
                                 let _ = sender.send(Arc::new(Packet::SetPrivilege(None, *p)));
                             }
-                            // we know it is a Packet::Msg, if we matched the normal way, we would need to clone the inner message to avoid moving it
-                            msg => {
-                                if msg.get_inner_msg().expect("should be a Msg").get_username()
+                            Packet::Msg(_) | Packet::File(_) => {
+                                let msg = packet.as_ref();
+                                if msg
+                                    .get_inner_msg()
+                                    .expect("should contain a message")
+                                    .get_username()
                                     == user.read().await.get_username()
                                 {
                                     // the client is responsible for displaying its own messages
@@ -255,10 +258,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             continue;
                         }
                     };
-                    if let Packet::Msg(m) = data {
+                    if let Some(m) = data.get_inner_msg() {
                         // check if user has premision to send messages
                         // we do not do this in the writer thread, so that the server and other users can still send messages to tihs users
-                        if !matches!(user.read().await.get_privilege(), UserPrivilege::ReadOnly) {
+                        if matches!(user.read().await.get_privilege(), UserPrivilege::ReadOnly) {
+                            let _ = tx.send(Arc::clone(&NO_SEND_PREMISION));
+                        }
+                        if !matches!(data, Packet::File(_)) {
                             // add it to the database
                             // we don't add it in the writer thread, because then server messages would be inserted into the db
                             let user = m.get_username().to_string();
@@ -279,14 +285,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             for sender in user_book.values() {
                                 senders.push(sender.clone());
                             }
-                            let packet = Arc::new(Packet::Msg(m));
+                            let packet = Arc::new(data);
                             drop(user_book);
                             for sender in senders {
                                 let packet_clone = Arc::clone(&packet);
                                 let _ = sender.send(packet_clone);
                             }
-                        } else {
-                            let _ = tx.send(Arc::clone(&NO_SEND_PREMISION));
                         }
                     } else if let Packet::SetPrivilege(None, _) = data {
                         // a user should'nt be able to set his own privilege
