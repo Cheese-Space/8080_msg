@@ -1,3 +1,5 @@
+// use expect when you know the result to always be Ok
+#![deny(clippy::unwrap_used)]
 mod prelude;
 use crate::prelude::*;
 #[derive(Parser)]
