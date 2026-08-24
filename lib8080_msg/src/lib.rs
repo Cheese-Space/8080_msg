@@ -310,12 +310,12 @@ impl Packet {
     }
     /// get the inner [`Message`] of a [`Packet`]
     ///
-    /// Returns None if self ≠ Packet::Msg.
+    /// Returns None if self ≠ Packet::Msg or Packet::File.
     pub fn get_inner_msg(&self) -> Option<&Message> {
-        if let Packet::Msg(msg) = self {
-            Some(msg)
-        } else {
-            None
+        match self {
+            Packet::Msg(msg) => Some(msg),
+            Packet::File(file) => Some(file.get_message()),
+            _ => None,
         }
     }
 }
