@@ -264,7 +264,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         if matches!(user.read().await.get_privilege(), UserPrivilege::ReadOnly) {
                             let _ = tx.send(Arc::clone(&NO_SEND_PREMISION));
                         }
+<<<<<<< HEAD
                         if !matches!(data, Packet::File(_)) {
+=======
+                        if !matches!(data, Packet::File(_)) {                        
+>>>>>>> 1ffce3d0ae362bfdef83ce8431123e8047711c72
                             // add it to the database
                             // we don't add it in the writer thread, because then server messages would be inserted into the db
                             let user = m.get_username().to_string();
