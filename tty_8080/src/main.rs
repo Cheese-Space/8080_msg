@@ -1,7 +1,59 @@
-// use expect when you know the result to always be Ok
+// use expect when you know the result to always be Ok (PROVIDE A REASON)
 #![deny(clippy::unwrap_used)]
 mod prelude;
 use crate::prelude::*;
+const MAIN_STACK: &str = "__MAIN_STACK__";
+macro_rules! version {
+    () => {
+        "0.2.0 BETA"
+    };
+}
+// avoids having to use format! for unexpected runtime errors
+macro_rules! debug_msg {
+    (name not found) => {
+        concat!("internal error: name not found\nNote you SHOULDN'T see this message in a release build of tty_8080.\nIf you are seeing this in a release build, please make a new issue on github with the folowing information:\nissue type: name not found in stackview\nversion: ", version!())
+    };
+}
+trait CursiveStackExt {
+    fn push_layer_stack<T: View>(&mut self, view: T);
+    fn push_fullscreen<T: View>(&mut self, view: T);
+    fn pop_layer_stack(&mut self);
+    fn move_layer_to_front(&mut self, name: &str);
+    fn move_layer_to_back(&mut self, name: &str);
+}
+impl CursiveStackExt for Cursive {
+    fn push_layer_stack<T: View>(&mut self, view: T) {
+        self.call_on_name(MAIN_STACK, |stack: &mut StackView| {
+            stack.add_layer(view);
+        });
+    }
+    fn push_fullscreen<T: View>(&mut self, view: T) {
+        self.call_on_name(MAIN_STACK, |stack: &mut StackView| {
+            stack.add_fullscreen_layer(view);
+        });
+    }
+    fn pop_layer_stack(&mut self) {
+        self.call_on_name(MAIN_STACK, |stack: &mut StackView| {
+            stack.pop_layer();
+        });
+    }
+    fn move_layer_to_front(&mut self, name: &str) {
+        self.call_on_name(MAIN_STACK, |stack: &mut StackView| {
+            let layer = stack
+                .find_layer_from_name(name)
+                .expect(debug_msg!(name not found));
+            stack.move_to_front(layer);
+        });
+    }
+    fn move_layer_to_back(&mut self, name: &str) {
+        self.call_on_name(MAIN_STACK, |stack: &mut StackView| {
+            let layer = stack
+                .find_layer_from_name(name)
+                .expect(debug_msg!(name not found));
+            stack.move_to_back(layer);
+        });
+    }
+}
 #[derive(Parser)]
 #[command(version, about, long_about = None)]
 struct Args {
@@ -68,6 +120,7 @@ async fn main() -> ExitCode {
     }
 }
 async fn actual_main() -> Result<(), Box<dyn std::error::Error>> {
+    let mut siv = Cursive::default();
     let args = Args::parse();
     let (mut reader, mut writer) = TcpStream::connect(format!("{}:{}", args.adress, args.port))
         .await?
@@ -75,7 +128,7 @@ async fn actual_main() -> Result<(), Box<dyn std::error::Error>> {
     Packet::Join(args.username.clone())
         .send_async(&mut writer)
         .await?;
-    let mut siv = Cursive::default();
+    siv.add_fullscreen_layer(StackView::new().with_name(MAIN_STACK));
     let cb_cink = siv.cb_sink().clone();
     let cb_clone = cb_cink.clone();
     let (tx, mut rx) = mpsc::unbounded_channel::<String>();
@@ -112,74 +165,10 @@ async fn actual_main() -> Result<(), Box<dyn std::error::Error>> {
             };
             let m = match content {
                 Packet::Msg(m) => m,
-                Packet::File(f) => {
-                    let cb_cink = cb_cink.clone();
-                    let (sender, mut reciever) = mpsc::unbounded_channel::<PathBuf>();
-                    let text = Arc::new(format!(
-                        "{} send you a file named: {}\n{f}",
-                        f.get_message().get_username(),
-                        f.get_file().name()
-                    ));
-                    // we handle file writes in a different thread so we can still recieve messages
-                    tokio::spawn(async move {
-                        loop {
-                            let text = Arc::clone(&text);
-                            let sender = sender.clone();
-                            let cb_clone = cb_cink.clone();
-                            cb_cink
-                                .send(Box::new(move |siv| {
-                                    siv.add_layer(
-                                        Dialog::new()
-                                            .content(
-                                                LinearLayout::vertical()
-                                                    .child(TextView::new(text.as_str()))
-                                                    .child(
-                                                        EditView::new().with_name("input_file_write"),
-                                                    ),
-                                            )
-                                            .button("write to disk", move |siv| {
-                                                let mut path = PathBuf::new();
-                                                siv.call_on_name(
-                                                    "input_file_write",
-                                                    |view: &mut EditView| {
-                                                        let text = view.get_content();
-                                                        if text.trim().is_empty() {
-                                                            let error = non_fatal_error("no path provided");
-                                                            cb_clone.send(Box::new(error)).expect("cursive cb channel should only close when program terminates");
-                                                            return;
-                                                        }
-                                                        path = PathBuf::from(text.as_str());
-                                                    },
-                                                );
-                                                sender.send(path).expect("reciever shouldn't have closed yet");
-                                                cb_clone.send(Box::new(|siv| {
-                                                    siv.focus_name("main").expect("should be found");
-                                                }))
-                                                    .expect("cursive cb channel should only close when program terminates");
-                                            })
-                                            .dismiss_button("cancel")
-                                            .with_name("got_file_dialog")
-                                    );
-                                }))
-                                .expect("cursive cb channel should only close when program terminates");
-                            let mut path = match reciever.recv().await {
-                                Some(p) => p,
-                                None => break, // this means cancel was pressed
-                            };
-                            if let Err(e) = f.get_file().write_to_disk_async(&mut path).await {
-                                let error = non_fatal_error(format!("error: {e}"));
-                                cb_cink.send(Box::new(move |siv| {
-                                    siv.focus_name("got_file_dialog").expect("should be found");
-                                    error(siv);
-                                })).expect("cursive cb channel should only close when program terminates");
-                                continue;
-                            }
-                            break;
-                        }
-                    });
-                    continue;
-                }
-                _ => unreachable!("users can only send files and messages to other users"),
+                Packet::File(_) => todo!("redo file handeling (first attempt didn't work)"),
+                _ =>
+                /* SAFETY: code will never be reached as users can only recieve files and messages from other users */
+                unsafe { unreachable_unchecked() },
             };
             cb_cink
                 .send(Box::new(move |siv| {
@@ -311,7 +300,7 @@ async fn actual_main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
     });
-    siv.add_fullscreen_layer(
+    siv.push_fullscreen(
         Dialog::new()
             .content(
                 LinearLayout::vertical()
