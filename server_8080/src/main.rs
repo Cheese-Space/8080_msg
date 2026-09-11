@@ -38,6 +38,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     db_client.conn(|conn| {
         conn.execute("CREATE TABLE IF NOT EXISTS Messages(id INTEGER PRIMARY KEY, user TEXT NOT NULL, message TEXT NOT NULL)", ())
     }).await?;
+    let file_cache = TempDir::with_prefix(format!("8080_MSG_CACHE_{}", pid()))?;
+    let cache_path = Arc::new(file_cache.path().to_path_buf());
     info!("connect to port: {port}");
     // conection listening thread
     tokio::spawn(async move {
@@ -50,6 +52,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
             };
             let user_book = Arc::clone(&user_book);
+            let cache_path = Arc::clone(&cache_path);
             let db_client = db_client.clone();
             // each connection gets its own thread could be prone to ddos atacks maybe?
             // todo: maker user limit configurable
