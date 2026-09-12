@@ -2,8 +2,7 @@
 //! More usage examples will come when the guide on making a custom client is finished.  
 //!
 //! # async
-//! If you want to write a [`Packet`] asyncly, you need to enable the async feature.  
-//! The async feature is not enabled by default.
+//! If you want to use any async function from this crate, you have to enable the async feature AND use tokio as your async runtime.
 #![deny(missing_docs)]
 #![cfg_attr(docsrs, feature(doc_cfg))]
 use serde::Deserialize;
@@ -23,33 +22,32 @@ use tokio::fs::{self as async_fs, File as AsyncFile};
 #[cfg(feature = "async")]
 use tokio::io::AsyncWriteExt;
 // could change into a TinyStr in the future
-/// the type representing a username
+/// The type representing a username.
 ///
-/// it is not guaranteed that this type will always be a String
+/// It is not guaranteed that this type will always be a String.
 pub type Username = String;
 #[derive(Serialize, Deserialize, Debug, Clone)]
-/// represents a message
+/// Represents a message.
 pub struct Message {
-    /// the user who send the message
+    /// The user who send the message.
     user: Username,
-    /// the actual message
+    /// The actual message.
     ///
-    /// the message must be valid utf-8
+    /// The message must be valid utf-8.
     msg: String,
 }
 impl Message {
     #[inline]
-    /// get a refrence to the username
+    /// Get a refrence to the username.
     pub fn get_username(&self) -> &str {
         &self.user
     }
     #[inline]
-    /// get a refrence to the message
+    /// Get a refrence to the message.
     pub fn get_message(&self) -> &str {
         &self.msg
     }
-    #[must_use]
-    /// create a new message
+    /// Create a new message.
     pub fn new(user: &str, msg: &str) -> Self {
         Self {
             user: user.to_string(),
@@ -63,7 +61,7 @@ impl fmt::Display for Message {
         write!(f, "{}", self.msg)
     }
 }
-/// a file send by a user
+/// A file send by a user.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct UserFile {
     data: Vec<u8>,
@@ -73,7 +71,7 @@ pub struct UserFile {
     last_modified: Option<SystemTime>,
 }
 impl UserFile {
-    /// create a new UserFile
+    /// Create a new UserFile.
     pub fn new<P: AsRef<OsStr> + ?Sized>(path: &P) -> io::Result<Self> {
         let path = Path::new(path);
         let file_extension = path.extension().map(|s| format!("{}", s.display()));
@@ -98,10 +96,9 @@ impl UserFile {
     }
     #[cfg(feature = "async")]
     #[cfg_attr(docsrs, doc(cfg(feature = "async")))]
-    /// create a new UserFile asyncly
+    /// Create a new UserFile asyncly.
     ///
-    /// Note that this function is only availible with the async feature enabled.  
-    /// Also note that this function only works if you use tokio as the async runtime.
+    /// Note that this function only works if you use tokio as the async runtime.
     pub async fn new_async<P: AsRef<OsStr> + ?Sized>(path: &P) -> io::Result<Self> {
         let path = Path::new(path);
         let file_extension = path.extension().map(|s| format!("{}", s.display()));
@@ -124,7 +121,7 @@ impl UserFile {
             last_modified,
         })
     }
-    /// write a UserFile to disk
+    /// Write a UserFile to disk.
     pub fn write_to_disk(&self, path: &mut PathBuf) -> io::Result<()> {
         if !path.is_dir() {
             return Err(ErrorKind::NotADirectory.into());
@@ -140,10 +137,9 @@ impl UserFile {
     }
     #[cfg(feature = "async")]
     #[cfg_attr(docsrs, doc(cfg(feature = "async")))]
-    /// write a UserFile to disk asyncly
+    /// Write a UserFile to disk asyncly.
     ///
-    /// Note that this function is only availible with the async feature enabled.  
-    /// Also note that this function only works if you use tokio as the async runtime.
+    /// Note that this function only works if you use tokio as the async runtime.
     pub async fn write_to_disk_async(&self, path: &mut PathBuf) -> io::Result<()> {
         if !path.is_dir() {
             return Err(ErrorKind::NotADirectory.into());
@@ -160,16 +156,16 @@ impl UserFile {
         file.set_times(times.set_accessed(accsessed).set_modified(modified))?;
         Ok(())
     }
-    /// get the file extension of the file
+    /// Get the file extension of the file.
     pub fn extension(&self) -> Option<&str> {
         self.file_extension.as_ref().map(|s| s.as_str())
     }
-    /// get the name of the file
+    /// Get the name of the file.
     pub fn name(&self) -> &str {
         &self.name
     }
 }
-/// a message with a file
+/// A message with a file.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct FileTransfer {
     msg: Message,
@@ -181,20 +177,20 @@ impl fmt::Display for FileTransfer {
     }
 }
 impl FileTransfer {
-    /// create a new FileTransfer
+    /// Create a new FileTransfer.
     pub fn new(msg: Message, file: UserFile) -> Self {
         Self { msg, file }
     }
-    /// get a refrence to the inner file
+    /// Get a refrence to the inner file.
     pub fn get_file(&self) -> &UserFile {
         &self.file
     }
-    /// get a refrence to the inner message
+    /// Get a refrence to the inner message.
     pub fn get_message(&self) -> &Message {
         &self.msg
     }
 }
-/// error when trying to convert a &str into a UserPrivilege
+/// Error when trying to convert a &str into a UserPrivilege.
 #[derive(Debug)]
 pub struct InvalidUserPrivilege<'a>(&'a str);
 impl fmt::Display for InvalidUserPrivilege<'_> {
@@ -202,15 +198,15 @@ impl fmt::Display for InvalidUserPrivilege<'_> {
         write!(f, "{} is not a valid user privilege", self.0)
     }
 }
-/// represents what a [`User`] can and can't do
+/// Represents what a [`User`] can and can't do.
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, Default)]
 pub enum UserPrivilege {
-    /// only read
+    /// Only read.
     ReadOnly,
     #[default]
-    /// read + write, is the default privilege
+    /// Read + write, is the default privilege.
     Normal,
-    /// read + write + kick + change user privilege
+    /// Read + write + kick + change user privilege.
     Admin,
 }
 impl<'a> TryFrom<&'a str> for UserPrivilege {
@@ -233,32 +229,32 @@ impl fmt::Display for UserPrivilege {
         }
     }
 }
-/// a user
+/// A user.
 #[derive(Debug, Clone)]
 pub struct User {
-    /// the name of the user
+    /// The name of the user.
     name: Username,
-    /// the privilege of the user, see [`UserPirvilege`]
+    /// The privilege of the user, see [`UserPirvilege`].
     privilege: UserPrivilege,
 }
 impl User {
     #[inline]
-    /// get the privilege of the user
+    /// Get the privilege of the user.
     pub const fn get_privilege(&self) -> UserPrivilege {
         self.privilege
     }
     #[inline]
-    /// set the privilege of the user
+    /// Set the privilege of the user.
     pub const fn set_privilege(&mut self, privilege: UserPrivilege) {
         self.privilege = privilege;
     }
     #[inline]
-    /// get a refrence to the username of the user
+    /// Get a refrence to the username of the user.
     pub fn get_username(&self) -> &str {
         &self.name
     }
     #[inline]
-    /// create a new User
+    /// Create a new User.
     pub fn new(name: &str, privilege: Option<UserPrivilege>) -> Self {
         let privilege = privilege.unwrap_or_default();
         Self {
@@ -268,7 +264,7 @@ impl User {
     }
 }
 #[derive(Serialize, Deserialize, Debug, Clone)]
-/// data which client(s) and the server can send to each other
+/// Data which client(s) and the server can send to each other.
 pub enum Packet {
     /// client: signals that a client wants to exit
     Exit,
@@ -287,28 +283,28 @@ pub enum Packet {
     File(FileTransfer),
 }
 impl Packet {
-    /// send a [`Packet`] to a writer
+    /// Send a [`Packet`] to a writer.
     pub fn send<W: Write>(&self, stream: &mut W) -> io::Result<()> {
         let data_as_bytes = Vec::from(self);
         stream.write_all(&data_as_bytes)
     }
-    /// send a [`Packet`] to an async writer
+    /// Send a [`Packet`] to an async writer.
     ///
-    /// Note that this function is only available with the async feature enabled.  
-    /// Also note that This function only works on async writers which implement tokio's [`AsyncWriteExt`](https://docs.rs/tokio/latest/tokio/io/trait.AsyncWriteExt.html) trait.  
+    /// Note that This function only works on async writers which implement tokio's [`AsyncWriteExt`](https://docs.rs/tokio/latest/tokio/io/trait.AsyncWriteExt.html) trait.  
     /// If you want to send a packet to a non-tokio async writer, then you can convert the packet to a [`Vec<u8>`](https://doc.rust-lang.org/std/vec/struct.Vec.html):
-    /// ```ignore
+    /// ``` rust
+    /// # use lib8080_msg::Packet;
     /// let packet = Packet::Exit;
-    /// let packet_as_bytes = Vec::from(packet);
+    /// let packet_as_bytes = Vec::from(&packet);
     /// ```  
-    // todo: allow all async writers?
+    // TODO: allow all async writers?
     #[cfg(feature = "async")]
     #[cfg_attr(docsrs, doc(cfg(feature = "async")))]
     pub async fn send_async<W: AsyncWriteExt + Unpin>(&self, stream: &mut W) -> io::Result<()> {
         let data_as_bytes = Vec::from(self);
         stream.write_all(&data_as_bytes).await
     }
-    /// get the inner [`Message`] of a [`Packet`]
+    /// Get the inner [`Message`] of a [`Packet`].
     ///
     /// Returns None if self ≠ Packet::Msg or Packet::File.
     pub fn get_inner_msg(&self) -> Option<&Message> {
@@ -320,6 +316,9 @@ impl Packet {
     }
 }
 impl From<&Packet> for Vec<u8> {
+    /// Convert a [`Packet`] to a [`Vec<u8>`](https://doc.rust-lang.org/std/vec/struct.Vec.html).
+    /// 
+    /// Useful if you want to use another async runtime than Tokio.
     fn from(value: &Packet) -> Self {
         let contents = serde_json::to_string(value).unwrap().as_bytes().to_vec();
         let mut header = (contents.len() as u32).to_be_bytes().to_vec();
