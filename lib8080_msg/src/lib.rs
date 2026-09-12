@@ -62,12 +62,30 @@ impl fmt::Display for Message {
     }
 }
 #[derive(Serialize, Deserialize, Debug, Clone)]
-/// Internal struct for storing file metadata.
-struct Metadata {
+/// File metadata.
+pub struct Metadata {
     file_extension: Option<String>,
     name: String,
     accessed: Option<SystemTime>,
     last_modified: Option<SystemTime>,
+}
+impl Metadata {
+    /// Get the file extension.
+    pub fn extension(&self) -> Option<&str> {
+        self.file_extension.as_ref().map(|s| s.as_str())
+    }
+    /// Get the file name.
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+    /// Get the last accessed time.
+    pub fn last_accessed(&self) -> Option<SystemTime> {
+        self.accessed
+    }
+    /// Get the last modified time.
+    pub fn last_modified(&self) -> Option<SystemTime> {
+        self.last_modified
+    }
 }
 /// A file send by a user.
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -290,8 +308,17 @@ pub enum Packet {
     SetPrivilege(Option<Username>, UserPrivilege),
     /// client + server: sends a message to a client or the server
     Msg(Message),
-    /// client: send a file to other clients
+    /// client: send a file to the server
     File(FileTransfer),
+    /// server: send the message of a File to the clients
+    FileMsg {
+        /// The message of the File.
+        message: Message,
+        /// The metadata of the File.
+        metadata: Metadata,
+        /// the sha256 hash of the File used to fetch it.
+        id: String,
+    },
 }
 impl Packet {
     /// Send a [`Packet`] to a writer.
