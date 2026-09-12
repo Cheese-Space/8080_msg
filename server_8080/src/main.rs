@@ -40,6 +40,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }).await?;
     let file_cache = TempDir::with_prefix(format!("8080_MSG_CACHE_{}", pid()))?;
     let cache_path = Arc::new(file_cache.path().to_path_buf());
+    #[cfg(debug_assertions)]
+    eprintln!("temp folder: {}", cache_path.as_ref().display());
     info!("connect to port: {port}");
     // conection listening thread
     tokio::spawn(async move {
@@ -138,6 +140,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     let user_book = u_book_clone;
                     let user = u_clone;
                     while let Some(packet) = rx.recv().await {
+                        #[cfg(debug_assertions)]
                         info!("recieved packet: {:?}", *packet);
                         match packet.as_ref() {
                             Packet::Exit => {
@@ -219,7 +222,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 };
                                 let _ = sender.send(Arc::new(Packet::SetPrivilege(None, *p)));
                             }
-                            Packet::Msg(_) | Packet::File(_) => {
+                            Packet::Msg(_) => {
                                 let msg = packet.as_ref();
                                 if msg
                                     .get_inner_msg()
@@ -232,6 +235,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 }
                                 let _ = msg.send_async(&mut writer).await;
                             }
+                            Packet::File(u) => todo!("file handeling attempt 2"),
                         }
                     }
                 });
@@ -285,13 +289,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 error!("failed to insert message into db: {e}");
                             }
                             let user_book = user_book.lock().await;
-                            let mut senders = Vec::with_capacity(user_book.len());
-                            for sender in user_book.values() {
-                                senders.push(sender.clone());
-                            }
                             let packet = Arc::new(data);
-                            drop(user_book);
-                            for sender in senders {
+                            for sender in user_book.values() {
                                 let packet_clone = Arc::clone(&packet);
                                 let _ = sender.send(packet_clone);
                             }
