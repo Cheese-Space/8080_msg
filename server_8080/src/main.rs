@@ -299,16 +299,27 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 continue;
                             }
                             Packet::File(f) => {
-                                data = match f.get_file().write_to_disk_async(&mut cache_path.join(cache_path.as_ref()), Some(&f.get_file().sha256_hash())).await {
+                                data = match f
+                                    .get_file()
+                                    .write_to_disk_async(
+                                        &mut cache_path.join(cache_path.as_ref()),
+                                        Some(&f.get_file().sha256_hash()),
+                                    )
+                                    .await
+                                {
                                     Ok(_) => f.into_file_msg(),
                                     Err(e) => {
                                         if let ErrorKind::AlreadyExists = e.kind() {
                                             // that means that an file with the same exact content already exists
                                             // so we just don't write it but do send the message
                                             f.into_file_msg()
-                                        }
-                                        else {
-                                            Packet::Msg(Message::new("server", &format!("failed to write file to the server's file cache: {e}")))
+                                        } else {
+                                            Packet::Msg(Message::new(
+                                                "server",
+                                                &format!(
+                                                    "failed to write file to the server's file cache: {e}"
+                                                ),
+                                            ))
                                         }
                                     }
                                 };
