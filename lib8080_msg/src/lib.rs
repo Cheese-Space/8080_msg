@@ -328,7 +328,9 @@ pub enum Packet {
     SetPrivilege(Option<Username>, UserPrivilege),
     /// client + server: sends a message to a client or the server
     Msg(Message),
-    /// client: send a file to the server
+    /// client + server: send a file to a recipient
+    ///
+    /// note that if this is from server to client, then the message is going to be empty
     File(FileTransfer),
     /// server: send the message of a File to the clients
     FileMsg {
@@ -337,6 +339,11 @@ pub enum Packet {
         /// The metadata of the File.
         metadata: Metadata,
         /// the sha256 hash of the File used to fetch it.
+        id: String,
+    },
+    /// client: asks the server to fetch a file
+    FetchFile {
+        /// the sha256 hash of the file to fetch
         id: String,
     },
 }
