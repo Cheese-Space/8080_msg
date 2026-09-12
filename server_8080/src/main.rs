@@ -140,7 +140,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }).await {
                     error!("failed to query database: {e}");
                 }
+                let p_clone = Arc::clone(&cache_path);
                 tokio::spawn(async move {
+                    let cache_path = p_clone;
                     let user_book = u_book_clone;
                     let user = u_clone;
                     while let Some(packet) = rx.recv().await {
@@ -240,6 +242,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 let _ = msg.send_async(&mut writer).await;
                             }
                             Packet::File(_) => (), /*handeled in reader thread*/
+                            Packet::FetchFile { id } => {
+                                let packet = match UserFile::new_async(&cache_path.join(id)).await {
+                                    Ok(f) => {
+                                        Packet::File(FileTransfer::new(Message::new("", ""), f))
+                                    }
+                                    Err(e) => Packet::Msg(Message::new(
+                                        "server",
+                                        &format!("failed to fetch file: {id}: {e}"),
+                                    )),
+                                };
+                                let _ = packet.send_async(&mut writer).await;
+                            }
                         }
                     }
                 });
@@ -302,7 +316,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 data = match f
                                     .get_file()
                                     .write_to_disk_async(
-                                        &mut cache_path.join(cache_path.as_ref()),
+                                        &mut cache_path.join(""),
                                         Some(&f.get_file().sha256_hash()),
                                     )
                                     .await
