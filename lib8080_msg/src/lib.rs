@@ -61,14 +61,19 @@ impl fmt::Display for Message {
         write!(f, "{}", self.msg)
     }
 }
-/// A file send by a user.
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct UserFile {
-    data: Vec<u8>,
+/// Internal struct for storing file metadata.
+struct Metadata {
     file_extension: Option<String>,
     name: String,
     accessed: Option<SystemTime>,
     last_modified: Option<SystemTime>,
+}
+/// A file send by a user.
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct UserFile {
+    data: Vec<u8>,
+    metadata: Metadata,
 }
 impl UserFile {
     /// Create a new UserFile.
@@ -86,13 +91,13 @@ impl UserFile {
         let accessed = metadata.accessed().ok();
         let last_modified = metadata.modified().ok();
         let data = fs::read(path)?;
-        Ok(Self {
-            data,
+        let metadata = Metadata {
             file_extension,
             name,
             accessed,
             last_modified,
-        })
+        };
+        Ok(Self { data, metadata })
     }
     #[cfg(feature = "async")]
     #[cfg_attr(docsrs, doc(cfg(feature = "async")))]
@@ -113,25 +118,28 @@ impl UserFile {
         let accessed = metadata.accessed().ok();
         let last_modified = metadata.modified().ok();
         let data = async_fs::read(path).await?;
-        Ok(Self {
-            data,
+        let metadata = Metadata {
             file_extension,
             name,
             accessed,
             last_modified,
-        })
+        };
+        Ok(Self { data, metadata })
     }
     /// Write a UserFile to disk.
     pub fn write_to_disk(&self, path: &mut PathBuf) -> io::Result<()> {
         if !path.is_dir() {
             return Err(ErrorKind::NotADirectory.into());
         }
-        path.push(&self.name);
+        path.push(&self.metadata.name);
         let mut file = File::create_new(path)?;
         file.write_all(&self.data)?;
         let times = FileTimes::new();
-        let accsessed = self.accessed.unwrap_or_else(|| SystemTime::now());
-        let modified = self.last_modified.unwrap_or_else(|| SystemTime::now());
+        let accsessed = self.metadata.accessed.unwrap_or_else(|| SystemTime::now());
+        let modified = self
+            .metadata
+            .last_modified
+            .unwrap_or_else(|| SystemTime::now());
         file.set_times(times.set_accessed(accsessed).set_modified(modified))?;
         Ok(())
     }
@@ -144,25 +152,28 @@ impl UserFile {
         if !path.is_dir() {
             return Err(ErrorKind::NotADirectory.into());
         }
-        path.push(&self.name);
+        path.push(&self.metadata.name);
         let mut file = AsyncFile::create_new(path).await?;
         file.write_all(&self.data).await?;
         file.flush().await?;
         // we have to turn it into a std File, because tokio's File struct doesn't have a set_times function
         let file = file.into_std().await;
         let times = FileTimes::new();
-        let accsessed = self.accessed.unwrap_or_else(|| SystemTime::now());
-        let modified = self.last_modified.unwrap_or_else(|| SystemTime::now());
+        let accsessed = self.metadata.accessed.unwrap_or_else(|| SystemTime::now());
+        let modified = self
+            .metadata
+            .last_modified
+            .unwrap_or_else(|| SystemTime::now());
         file.set_times(times.set_accessed(accsessed).set_modified(modified))?;
         Ok(())
     }
     /// Get the file extension of the file.
     pub fn extension(&self) -> Option<&str> {
-        self.file_extension.as_ref().map(|s| s.as_str())
+        self.metadata.file_extension.as_ref().map(|s| s.as_str())
     }
     /// Get the name of the file.
     pub fn name(&self) -> &str {
-        &self.name
+        &self.metadata.name
     }
 }
 /// A message with a file.
@@ -317,7 +328,7 @@ impl Packet {
 }
 impl From<&Packet> for Vec<u8> {
     /// Convert a [`Packet`] to a [`Vec<u8>`](https://doc.rust-lang.org/std/vec/struct.Vec.html).
-    /// 
+    ///
     /// Useful if you want to use another async runtime than Tokio.
     fn from(value: &Packet) -> Self {
         let contents = serde_json::to_string(value).unwrap().as_bytes().to_vec();
