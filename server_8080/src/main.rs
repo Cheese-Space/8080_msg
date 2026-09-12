@@ -1,5 +1,9 @@
+#![deny(clippy::unwrap_used)]
+#![deny(unused_mut)]
 mod prelude;
 mod static_messages;
+use std::io::ErrorKind;
+
 use crate::prelude::*;
 use crate::static_messages::*;
 /// checks if a username is valid
@@ -222,7 +226,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 };
                                 let _ = sender.send(Arc::new(Packet::SetPrivilege(None, *p)));
                             }
-                            Packet::Msg(_) => {
+                            Packet::Msg(_) | Packet::FileMsg { .. } => {
                                 let msg = packet.as_ref();
                                 if msg
                                     .get_inner_msg()
@@ -235,7 +239,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 }
                                 let _ = msg.send_async(&mut writer).await;
                             }
-                            Packet::File(u) => todo!("file handeling attempt 2"),
+                            Packet::File(_) => (), /*handeled in reader thread*/
                         }
                     }
                 });
@@ -259,7 +263,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         let mut user_book = user_book.lock().await;
                         user_book.remove(username);
                     }
-                    let data: Packet = match serde_json::from_slice(&data) {
+                    let mut data: Packet = match serde_json::from_slice(&data) {
                         Ok(d) => d,
                         Err(e) => {
                             error!("user send malformed packet: {e}");
@@ -272,28 +276,50 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         if matches!(user.read().await.get_privilege(), UserPrivilege::ReadOnly) {
                             let _ = tx.send(Arc::clone(&NO_SEND_PREMISION));
                         }
-                        if !matches!(data, Packet::File(_)) {
-                            // add it to the database
-                            // we don't add it in the writer thread, because then server messages would be inserted into the db
-                            let user = m.get_username().to_string();
-                            let message = m.get_message().to_string();
-                            if let Err(e) = db_client
-                                .conn(|conn| {
-                                    conn.execute(
-                                        "INSERT INTO Messages (user, message) VALUES (?, ?)",
-                                        [user, message],
-                                    )
-                                })
-                                .await
-                            {
-                                error!("failed to insert message into db: {e}");
+                        match data {
+                            Packet::Msg(_) => {
+                                // add it to the database
+                                // we don't add it in the writer thread, because then server messages would be inserted into the db
+                                let user = m.get_username().to_string();
+                                let message = m.get_message().to_string();
+                                if let Err(e) = db_client
+                                    .conn(|conn| {
+                                        conn.execute(
+                                            "INSERT INTO Messages (user, message) VALUES (?, ?)",
+                                            [user, message],
+                                        )
+                                    })
+                                    .await
+                                {
+                                    error!("failed to insert message into db: {e}");
+                                }
                             }
-                            let user_book = user_book.lock().await;
-                            let packet = Arc::new(data);
-                            for sender in user_book.values() {
-                                let packet_clone = Arc::clone(&packet);
-                                let _ = sender.send(packet_clone);
+                            Packet::FileMsg { .. } => {
+                                error!("error: user can't send FileMsg");
+                                continue;
                             }
+                            Packet::File(f) => {
+                                data = match f.get_file().write_to_disk_async(&mut cache_path.join(cache_path.as_ref()), Some(&f.get_file().sha256_hash())).await {
+                                    Ok(_) => f.into_file_msg(),
+                                    Err(e) => {
+                                        if let ErrorKind::AlreadyExists = e.kind() {
+                                            // that means that an file with the same exact content already exists
+                                            // so we just don't write it but do send the message
+                                            f.into_file_msg()
+                                        }
+                                        else {
+                                            Packet::Msg(Message::new("server", &format!("failed to write file to the server's file cache: {e}")))
+                                        }
+                                    }
+                                };
+                            }
+                            _ => (),
+                        }
+                        let user_book = user_book.lock().await;
+                        let packet = Arc::new(data);
+                        for sender in user_book.values() {
+                            let packet_clone = Arc::clone(&packet);
+                            let _ = sender.send(packet_clone);
                         }
                     } else if let Packet::SetPrivilege(None, _) = data {
                         // a user should'nt be able to set his own privilege

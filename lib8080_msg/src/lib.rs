@@ -7,6 +7,7 @@
 #![cfg_attr(docsrs, feature(doc_cfg))]
 use serde::Deserialize;
 use serde::Serialize;
+use sha2::{Digest, Sha256};
 use std::ffi::OsStr;
 use std::fmt;
 use std::fs::{self, File, FileTimes};
@@ -14,6 +15,7 @@ use std::io::ErrorKind;
 use std::io::{self, Write};
 #[cfg(feature = "async")]
 use std::marker::Unpin;
+use std::ops::Deref;
 use std::path::Path;
 use std::path::PathBuf;
 use std::time::SystemTime;
@@ -145,11 +147,11 @@ impl UserFile {
         Ok(Self { data, metadata })
     }
     /// Write a UserFile to disk.
-    pub fn write_to_disk(&self, path: &mut PathBuf) -> io::Result<()> {
+    pub fn write_to_disk(&self, path: &mut PathBuf, file_name: Option<&str>) -> io::Result<()> {
         if !path.is_dir() {
             return Err(ErrorKind::NotADirectory.into());
         }
-        path.push(&self.metadata.name);
+        path.push(file_name.unwrap_or(&self.metadata.name));
         let mut file = File::create_new(path)?;
         file.write_all(&self.data)?;
         let times = FileTimes::new();
@@ -166,11 +168,15 @@ impl UserFile {
     /// Write a UserFile to disk asyncly.
     ///
     /// Note that this function only works if you use tokio as the async runtime.
-    pub async fn write_to_disk_async(&self, path: &mut PathBuf) -> io::Result<()> {
+    pub async fn write_to_disk_async(
+        &self,
+        path: &mut PathBuf,
+        file_name: Option<&str>,
+    ) -> io::Result<()> {
         if !path.is_dir() {
             return Err(ErrorKind::NotADirectory.into());
         }
-        path.push(&self.metadata.name);
+        path.push(file_name.unwrap_or(&self.metadata.name));
         let mut file = AsyncFile::create_new(path).await?;
         file.write_all(&self.data).await?;
         file.flush().await?;
@@ -185,13 +191,15 @@ impl UserFile {
         file.set_times(times.set_accessed(accsessed).set_modified(modified))?;
         Ok(())
     }
-    /// Get the file extension of the file.
-    pub fn extension(&self) -> Option<&str> {
-        self.metadata.file_extension.as_ref().map(|s| s.as_str())
+    /// Calculate the sha256 hash of the file.
+    pub fn sha256_hash(&self) -> String {
+        hex::encode(Sha256::digest(&self.data))
     }
-    /// Get the name of the file.
-    pub fn name(&self) -> &str {
-        &self.metadata.name
+}
+impl Deref for UserFile {
+    type Target = Metadata;
+    fn deref(&self) -> &Self::Target {
+        &self.metadata
     }
 }
 /// A message with a file.
@@ -217,6 +225,18 @@ impl FileTransfer {
     /// Get a refrence to the inner message.
     pub fn get_message(&self) -> &Message {
         &self.msg
+    }
+    /// Convert a UserFile into a Packet::FileMsg
+    pub fn into_file_msg(self) -> Packet {
+        let message = self.msg;
+        let file = self.file;
+        let id = file.sha256_hash();
+        let metadata = file.metadata;
+        Packet::FileMsg {
+            message,
+            metadata,
+            id,
+        }
     }
 }
 /// Error when trying to convert a &str into a UserPrivilege.
@@ -349,6 +369,7 @@ impl Packet {
         match self {
             Packet::Msg(msg) => Some(msg),
             Packet::File(file) => Some(file.get_message()),
+            Packet::FileMsg { message, .. } => Some(message),
             _ => None,
         }
     }
