@@ -110,7 +110,7 @@ fn should_display_text(split_text: &[&str]) -> bool {
     // we know that the message is never empty, so index zero should always be valid
     match *split_text.get(0).expect(debug_msg!(slice empty)) {
         "/exit" | "/getport" | "/file" => false,
-        "/kick" if len == 2 => false,
+        "/kick" | "/fetch" if len == 2 => false,
         "/set_privilege" if len == 3 => false,
         _ => true,
     }
