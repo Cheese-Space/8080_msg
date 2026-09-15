@@ -11,9 +11,13 @@ macro_rules! version {
 // avoids having to use format! for unexpected runtime errors
 macro_rules! debug_msg {
     (name not found) => {
-        concat!("internal error: name not found\nNote you SHOULDN'T see this message in a release build of tty_8080.\nIf you are seeing this in a release build, please make a new issue on github with the folowing information:\nissue type: name not found in stackview\nversion: ", version!())
+        concat!("internal error: name not found\nNote you SHOULDN'T see this message in a release build of tty_8080.\nIf you are seeing this in a release build, please make a new issue on github with the folowing information:\nissue type: name not found in stackview\nversion: ", version!(), "\non line: ", line!())
+    };
+    (slice empty) => {
+        concat!("internal error: slice was empty\nNote you SHOULDN'T see this message in a release build of tty_8080.\nIf you are seeing this in a release build, please make a new issue on github with the folowing information:\nissue type: slice empty\nversion: ", version!(), "\non line: ", line!())
     };
 }
+// TODO: remove this, this is useless now
 trait CursiveStackExt {
     fn push_layer_stack<T: View>(&mut self, view: T);
     fn push_fullscreen<T: View>(&mut self, view: T);
@@ -97,11 +101,14 @@ fn fatal_error<S: ErrorString>(text: S) -> impl FnOnce(&mut Cursive) {
         );
     }
 }
-/// decides if the message provided should or shouldn't be displayed
+/// Decides if the message provided should or shouldn't be displayed.
+///
+/// # panics
+/// Panics if the slice is empty (altough this shouldn't happen anyway).
 fn should_display_text(split_text: &[&str]) -> bool {
     let len = split_text.len();
     // we know that the message is never empty, so index zero should always be valid
-    match split_text[0] {
+    match *split_text.get(0).expect(debug_msg!(slice empty)) {
         "/exit" | "/getport" | "/file" => false,
         "/kick" if len == 2 => false,
         "/set_privilege" if len == 3 => false,
