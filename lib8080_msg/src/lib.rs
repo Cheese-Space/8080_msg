@@ -89,6 +89,17 @@ impl Metadata {
         self.last_modified
     }
 }
+impl fmt::Display for Metadata {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if let Some(ref extension) = self.file_extension {
+            writeln!(f, "name: {}", self.name)?;
+            write!(f, "extension: {}", extension)?;
+        } else {
+            write!(f, "name: {}", self.name)?;
+        }
+        Ok(())
+    }
+}
 /// A file send by a user.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct UserFile {
@@ -237,6 +248,11 @@ impl FileTransfer {
             metadata,
             id,
         }
+    }
+    /// Returns the inner UserFile while taking self
+    #[inline(always)]
+    pub fn into_user_file(self) -> UserFile {
+        self.file
     }
 }
 /// Error when trying to convert a &str into a UserPrivilege.

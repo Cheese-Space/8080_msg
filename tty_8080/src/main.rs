@@ -1,20 +1,26 @@
+// TODO: add some local file cache for fetching files
 // use expect when you know the result to always be Ok (PROVIDE A REASON)
 #![deny(clippy::unwrap_used)]
 mod prelude;
 use crate::prelude::*;
 const MAIN_STACK: &str = "__MAIN_STACK__";
+static HOME_DIR: OnceLock<PathBuf> = OnceLock::new();
 macro_rules! version {
     () => {
         "0.2.0 BETA"
     };
 }
 // avoids having to use format! for unexpected runtime errors
+// TODO: remove name not found
 macro_rules! debug_msg {
     (name not found) => {
         concat!("internal error: name not found\nNote you SHOULDN'T see this message in a release build of tty_8080.\nIf you are seeing this in a release build, please make a new issue on github with the folowing information:\nissue type: name not found in stackview\nversion: ", version!(), "\non line: ", line!())
     };
     (slice empty) => {
         concat!("internal error: slice was empty\nNote you SHOULDN'T see this message in a release build of tty_8080.\nIf you are seeing this in a release build, please make a new issue on github with the folowing information:\nissue type: slice empty\nversion: ", version!(), "\non line: ", line!())
+    };
+    (lock set) => {
+        concat!("internal error: OnceLock was already set\nNote you SHOULDN'T see this message in a release build of tty_8080.\nIf you are seeing this in a release build, please make a new issue on github with the folowing information:\nissue type: OnceLock already set\nversion: ", version!(), "\non line: ", line!())
     };
 }
 // TODO: remove this, this is useless now
@@ -129,6 +135,9 @@ async fn main() -> ExitCode {
 async fn actual_main() -> Result<(), Box<dyn std::error::Error>> {
     let mut siv = Cursive::default();
     let args = Args::parse();
+    HOME_DIR
+        .set(home_dir().unwrap_or_default())
+        .expect(debug_msg!(lock set));
     let (mut reader, mut writer) = TcpStream::connect(format!("{}:{}", args.adress, args.port))
         .await?
         .into_split();
@@ -172,7 +181,30 @@ async fn actual_main() -> Result<(), Box<dyn std::error::Error>> {
             };
             let m = match content {
                 Packet::Msg(m) => m,
-                Packet::File(_) => todo!("redo file handeling (first attempt didn't work)"),
+                Packet::File(f) => {
+                    let cb_clone = cb_cink.clone();
+                    // spawns a new thread so we can stil recieve new messages
+                    tokio::spawn(async move {
+                        let cb_cink = cb_clone;
+                        let f = f.into_user_file();
+                        let mut dir = HOME_DIR.get().expect("should be set").clone();
+                        if let Err(e) = f.write_to_disk_async(&mut dir, Some(f.name())).await {
+                            cb_cink.send(Box::new(non_fatal_error(format!("error: failed to write file to disk: {e}\nnote you can try again by fetching the same file"))))
+                            .expect("cursive cb channel should only close when program terminates");
+                        }
+                    });
+                    continue;
+                }
+                Packet::FileMsg {
+                    message,
+                    metadata,
+                    id,
+                } => {
+                    let msg = format!(
+                        "send you a file: {message}\nmetadata: {metadata}\nsha256 hash: {id}"
+                    );
+                    Message::new(message.get_username(), &msg)
+                }
                 _ =>
                 /* SAFETY: code will never be reached as users can only recieve files and messages from other users */
                 unsafe { unreachable_unchecked() },
@@ -199,6 +231,9 @@ async fn actual_main() -> Result<(), Box<dyn std::error::Error>> {
                 "/exit" => Packet::Exit,
                 "/getport" => Packet::GetPort,
                 "/kick" if len == 2 => Packet::Kick(split_message[1].to_string()),
+                "/fetch" if len == 2 => Packet::FetchFile {
+                    id: split_message[1].to_string(),
+                },
                 "/set_privilege" if len == 3 => {
                     let privilege = match UserPrivilege::try_from(split_message[2]) {
                         Ok(p) => p,
