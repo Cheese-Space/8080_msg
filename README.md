@@ -31,7 +31,7 @@ The interface is kinda ugly for now, but will hopefully be updated in the future
 ## roadmap for v1.0.0 (new things may be added in the future)
 1. [x] working prototype of all the components
 2. [x] database for storing message history
-3. [ ] file transfers 
+3. [x] file transfers 
 4. [ ] encryption with tls
 5. [ ] add some sort of private messaging (i.e. a message only readable by one user)
 6. [ ] 'upgrade' the look of tty_8080
