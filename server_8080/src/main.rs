@@ -2,8 +2,6 @@
 #![deny(unused_mut)]
 mod prelude;
 mod static_messages;
-use std::io::ErrorKind;
-
 use crate::prelude::*;
 use crate::static_messages::*;
 /// checks if a username is valid
@@ -22,6 +20,7 @@ fn username_check(username: &str) -> Result<(), &'static str> {
 // it sends an Arc, so we don't have to clone when sending a Message to all writer thread
 // TODO: look if we can change Mutex with RwLock?
 type UserBook = Arc<Mutex<HashMap<Username, UnboundedSender<Arc<Packet>>>>>;
+type FileBook = Arc<RwLock<HashMap<String, String>>>;
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // init the logger
@@ -30,6 +29,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .init();
     // user_book keeps track of users
     let user_book: UserBook = Arc::new(Mutex::new(HashMap::new()));
+    // and file book keeps track of file names
+    let file_book: FileBook = Arc::new(RwLock::new(HashMap::new()));
     let listener = TcpListener::bind("0.0.0.0:0").await?;
     let port = listener.local_addr()?.port();
     PORT.set(port).expect("PORT should be unset");
@@ -58,6 +59,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
             };
             let user_book = Arc::clone(&user_book);
+            let file_book = Arc::clone(&file_book);
             let cache_path = Arc::clone(&cache_path);
             let db_client = db_client.clone();
             // each connection gets its own thread could be prone to ddos atacks maybe?
@@ -141,10 +143,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     error!("failed to query database: {e}");
                 }
                 let p_clone = Arc::clone(&cache_path);
+                let fi_book_clone = Arc::clone(&file_book);
                 tokio::spawn(async move {
                     let cache_path = p_clone;
                     let user_book = u_book_clone;
                     let user = u_clone;
+                    let file_book = fi_book_clone;
                     while let Some(packet) = rx.recv().await {
                         #[cfg(debug_assertions)]
                         info!("recieved packet: {:?}", *packet);
@@ -243,8 +247,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             }
                             Packet::File(_) => (), /*handeled in reader thread*/
                             Packet::FetchFile { id } => {
-                                let packet = match UserFile::new_async(&cache_path.join(id)).await {
-                                    Ok(f) => {
+                                let file_guard = file_book.read().await;
+                                let name = match file_guard.get(id) {
+                                    Some(n) => n.as_str(),
+                                    None => {
+                                        let _ = INVALID_HASH.send_async(&mut writer).await;
+                                        continue;
+                                    }
+                                };
+                                let name = name.to_string();
+                                let path = cache_path.join(id);
+                                drop(file_guard);
+                                let packet = match UserFile::new_async(&path).await {
+                                    Ok(mut f) => {
+                                        f.set_name(&name);
                                         Packet::File(FileTransfer::new(Message::new("", ""), f))
                                     }
                                     Err(e) => Packet::Msg(Message::new(
@@ -286,9 +302,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     };
                     if let Some(m) = data.get_inner_msg() {
                         // check if user has premision to send messages
-                        // we do not do this in the writer thread, so that the server and other users can still send messages to tihs users
+                        // we do not do this in the writer thread, so that the server and other users can still send messages to this users
                         if matches!(user.read().await.get_privilege(), UserPrivilege::ReadOnly) {
                             let _ = tx.send(Arc::clone(&NO_SEND_PREMISION));
+                            continue;
                         }
                         match data {
                             Packet::Msg(_) => {
@@ -313,20 +330,32 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 continue;
                             }
                             Packet::File(f) => {
+                                let hash = f.get_file().sha256_hash();
                                 data = match f
                                     .get_file()
-                                    .write_to_disk_async(
-                                        &mut cache_path.join(""),
-                                        Some(&f.get_file().sha256_hash()),
-                                    )
+                                    .write_to_disk_async(&mut cache_path.join(""), Some(&hash))
                                     .await
                                 {
-                                    Ok(_) => f.into_file_msg(),
+                                    Ok(_) => {
+                                        // only add it into our hashmap if the write didn't fail
+                                        file_book
+                                            .write()
+                                            .await
+                                            .insert(hash, f.get_file().name().to_string());
+                                        f.into_file_msg()
+                                    }
                                     Err(e) => {
                                         if let ErrorKind::AlreadyExists = e.kind() {
-                                            // that means that an file with the same exact content already exists
-                                            // so we just don't write it but do send the message
-                                            f.into_file_msg()
+                                            let file = f.into_user_file();
+                                            let _ = tx.send(Arc::new(Packet::Msg(Message::new(
+                                                "server",
+                                                &format!(
+                                                    "the file you tried to upload already exists:\nname: {}\nhash: {}",
+                                                    file.name(),
+                                                    hash
+                                                ),
+                                            ))));
+                                            continue;
                                         } else {
                                             Packet::Msg(Message::new(
                                                 "server",

@@ -7,7 +7,7 @@ const MAIN_STACK: &str = "__MAIN_STACK__";
 static HOME_DIR: OnceLock<PathBuf> = OnceLock::new();
 macro_rules! version {
     () => {
-        "0.2.0 BETA"
+        "0.2.1"
     };
 }
 // avoids having to use format! for unexpected runtime errors
@@ -201,13 +201,11 @@ async fn actual_main() -> Result<(), Box<dyn std::error::Error>> {
                     id,
                 } => {
                     let msg = format!(
-                        "send you a file: {message}\nmetadata: {metadata}\nsha256 hash: {id}"
+                        "send you a file: {message}\nmetadata:\n{metadata}\nsha256 hash: {id}"
                     );
                     Message::new(message.get_username(), &msg)
                 }
-                _ =>
-                /* SAFETY: code will never be reached as users can only recieve files and messages from other users */
-                unsafe { unreachable_unchecked() },
+                _ => continue,
             };
             cb_cink
                 .send(Box::new(move |siv| {
