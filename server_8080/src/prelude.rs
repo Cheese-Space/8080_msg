@@ -7,6 +7,7 @@ pub use log::error;
 pub use log::info;
 pub use std::collections::HashMap;
 pub use std::env::home_dir;
+pub use std::io::ErrorKind;
 pub use std::process::id as pid;
 pub use std::sync::Arc;
 pub use temp_dir::TempDir;

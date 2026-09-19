@@ -15,7 +15,7 @@ use std::io::ErrorKind;
 use std::io::{self, Write};
 #[cfg(feature = "async")]
 use std::marker::Unpin;
-use std::ops::Deref;
+use std::ops::{Deref, DerefMut};
 use std::path::Path;
 use std::path::PathBuf;
 use std::time::SystemTime;
@@ -79,6 +79,10 @@ impl Metadata {
     /// Get the file name.
     pub fn name(&self) -> &str {
         &self.name
+    }
+    /// Sets a new name.
+    pub fn set_name(&mut self, new: &str) {
+        self.name = new.to_string();
     }
     /// Get the last accessed time.
     pub fn last_accessed(&self) -> Option<SystemTime> {
@@ -211,6 +215,11 @@ impl Deref for UserFile {
     type Target = Metadata;
     fn deref(&self) -> &Self::Target {
         &self.metadata
+    }
+}
+impl DerefMut for UserFile {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.metadata
     }
 }
 /// A message with a file.

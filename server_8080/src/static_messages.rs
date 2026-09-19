@@ -21,13 +21,13 @@ pub static KICK_MESSAGE: LazyLock<Arc<Packet>> =
 pub static NO_KICK_PREMISION: LazyLock<Packet> = LazyLock::new(|| {
     Packet::Msg(Message::new(
         "server",
-        "you don't have premision to kick people",
+        "you don't have premission to kick people",
     ))
 });
 pub static NO_SEND_PREMISION: LazyLock<Arc<Packet>> = LazyLock::new(|| {
     Arc::new(Packet::Msg(Message::new(
         "server",
-        "you don't have premision to send messages",
+        "you don't have premission to send messages",
     )))
 });
 pub static NO_CHANGE_PRIVILEGE_PREMISION: LazyLock<Packet> = LazyLock::new(|| {
@@ -39,12 +39,18 @@ pub static NO_CHANGE_PRIVILEGE_PREMISION: LazyLock<Packet> = LazyLock::new(|| {
 pub static CANT_CHANGE_OWN_PRIVILEGE: LazyLock<Arc<Packet>> = LazyLock::new(|| {
     Arc::new(Packet::Msg(Message::new(
         "server",
-        "you can't change your own premision",
+        "you can't change your own premission",
     )))
 });
 pub static CANT_KICK_YOURSELF: LazyLock<Packet> = LazyLock::new(|| {
     Packet::Msg(Message::new(
         "server",
         "you can't kick yourself\nhint if you want to exit, enter /exit or similar",
+    ))
+});
+pub static INVALID_HASH: LazyLock<Packet> = LazyLock::new(|| {
+    Packet::Msg(Message::new(
+        "server",
+        "failed to fetch file: file doesn't exist",
     ))
 });
