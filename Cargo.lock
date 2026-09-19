@@ -1314,7 +1314,7 @@ dependencies = [
 
 [[package]]
 name = "tty_8080"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "clap",
  "color-print",
