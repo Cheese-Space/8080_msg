@@ -7,6 +7,7 @@ edition = "2024"
 serde_json = {workspace = true}
 lib8080_msg = {workspace = true}
 tokio = {workspace = true}
+tokio-rustls = {workspace = true}
 cursive = { version = "0.21.1", features = ["crossterm-backend"] }
 clap = { version = "4.6.2", features = ["derive"] }
 color-print = "0.3.7"

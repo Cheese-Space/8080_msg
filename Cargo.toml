@@ -6,3 +6,4 @@ members = ["lib8080_msg", "tty_8080", "server_8080"]
 serde_json = "1.0.150"
 lib8080_msg = { path = "lib8080_msg", features = ["async"] }
 tokio = { version = "1.53.0", features = ["full"] }
+tokio-rustls = "0.26.5"
