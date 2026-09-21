@@ -12,6 +12,7 @@ pub use std::process::id as pid;
 pub use std::sync::Arc;
 pub use temp_dir::TempDir;
 pub use tokio::io::AsyncReadExt;
+pub use tokio::io::split as split_io;
 pub use tokio::net::TcpListener;
 pub use tokio::signal::ctrl_c;
 pub use tokio::sync::Mutex;
