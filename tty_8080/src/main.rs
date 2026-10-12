@@ -1,13 +1,25 @@
 // TODO: add some local file cache for fetching files
 // use expect when you know the result to always be Ok (PROVIDE A REASON)
 #![deny(clippy::unwrap_used)]
+#![deny(unsafe_code)]
+#![warn(clippy::unnecessary_safety_comment)]
 mod prelude;
+use tokio::io::AsyncWriteExt;
+use tokio_rustls::{
+    TlsConnector,
+    rustls::{
+        ClientConfig, RootCertStore,
+        pki_types::{CertificateDer, ServerName, pem::PemObject},
+    },
+};
+
 use crate::prelude::*;
+#[deprecated]
 const MAIN_STACK: &str = "__MAIN_STACK__";
 static HOME_DIR: OnceLock<PathBuf> = OnceLock::new();
 macro_rules! version {
     () => {
-        "0.2.1"
+        "0.3.0 BETA"
     };
 }
 // avoids having to use format! for unexpected runtime errors
@@ -24,6 +36,7 @@ macro_rules! debug_msg {
     };
 }
 // TODO: remove this, this is useless now
+#[deprecated]
 trait CursiveStackExt {
     fn push_layer_stack<T: View>(&mut self, view: T);
     fn push_fullscreen<T: View>(&mut self, view: T);
@@ -68,7 +81,7 @@ impl CursiveStackExt for Cursive {
 #[command(version, about, long_about = None)]
 struct Args {
     /// the ip adress of the server
-    #[arg(short, long, value_name = "ADRESS")]
+    #[arg(short, long)]
     adress: String,
     /// the port to connect to
     #[arg(short, long)]
@@ -76,6 +89,9 @@ struct Args {
     #[arg(short, long)]
     /// the username to be used
     username: Username,
+    #[arg(short, long)]
+    /// the cert path
+    cert: String,
 }
 trait ErrorString: Into<StyledString> + Send + 'static {}
 impl<T: Into<StyledString> + Send + 'static> ErrorString for T {}
@@ -138,12 +154,24 @@ async fn actual_main() -> Result<(), Box<dyn std::error::Error>> {
     HOME_DIR
         .set(home_dir().unwrap_or_default())
         .expect(debug_msg!(lock set));
-    let (mut reader, mut writer) = TcpStream::connect(format!("{}:{}", args.adress, args.port))
-        .await?
-        .into_split();
+    let mut root_cert_store = RootCertStore::empty();
+    for cert in CertificateDer::pem_file_iter(args.cert)? {
+        root_cert_store.add(cert?)?;
+    }
+    let config = Arc::new(
+        ClientConfig::builder()
+            .with_root_certificates(root_cert_store)
+            .with_no_client_auth(),
+    );
+    let connector = TlsConnector::from(config);
+    let adrr = format!("{}:{}", args.adress, args.port);
+    let stream = TcpStream::connect(&adrr).await?;
+    let adrr = ServerName::try_from(args.adress).expect("is valid");
+    let (mut reader, mut writer) = io::split(connector.connect(adrr, stream).await?);
     Packet::Join(args.username.clone())
         .send_async(&mut writer)
         .await?;
+    writer.flush().await?;
     siv.add_fullscreen_layer(StackView::new().with_name(MAIN_STACK));
     let cb_cink = siv.cb_sink().clone();
     let cb_clone = cb_cink.clone();
@@ -332,6 +360,7 @@ async fn actual_main() -> Result<(), Box<dyn std::error::Error>> {
                     .expect("cursive cb channel should only close when program terminates");
                 return;
             }
+            let _ = writer.lock().await.flush().await;
             if let Packet::Exit = msg {
                 cb_cink
                     .send(Box::new(|siv| siv.quit()))

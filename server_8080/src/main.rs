@@ -4,6 +4,12 @@ mod prelude;
 mod static_messages;
 use crate::prelude::*;
 use crate::static_messages::*;
+use std::env;
+use tokio::io::AsyncWriteExt;
+use tokio_rustls::TlsAcceptor;
+use tokio_rustls::rustls::ServerConfig;
+use tokio_rustls::rustls::pki_types::{CertificateDer, PrivateKeyDer, pem::PemObject};
+// TODO: add timeout to tls handshake
 /// checks if a username is valid
 // you normaly shoudn't return string literals as an Err, but this is only used in one place anyway so it is fine
 fn username_check(username: &str) -> Result<(), &'static str> {
@@ -23,6 +29,19 @@ type UserBook = Arc<Mutex<HashMap<Username, UnboundedSender<Arc<Packet>>>>>;
 type FileBook = Arc<RwLock<HashMap<String, String>>>;
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let mut args = env::args();
+    args.next();
+    let cert_file = args.next().expect("missing certificate file argument");
+    let private_key_file = args.next().expect("missing private key file argument");
+    let config = Arc::new(
+        ServerConfig::builder()
+            .with_no_client_auth()
+            .with_single_cert(
+                CertificateDer::pem_file_iter(cert_file)?.collect::<Result<_, _>>()?,
+                PrivateKeyDer::from_pem_file(private_key_file)?,
+            )?,
+    );
+    let acceptor = TlsAcceptor::from(config.clone());
     // init the logger
     pretty_env_logger::formatted_builder()
         .filter_level(LevelFilter::Info)
@@ -58,6 +77,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     return;
                 }
             };
+            let stream = match acceptor.accept(connection).await {
+                Ok(s) => s,
+                Err(e) => {
+                    error!("failed to connect to user: {e}");
+                    return;
+                }
+            };
             let user_book = Arc::clone(&user_book);
             let file_book = Arc::clone(&file_book);
             let cache_path = Arc::clone(&cache_path);
@@ -65,7 +91,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             // each connection gets its own thread could be prone to ddos atacks maybe?
             // todo: maker user limit configurable
             tokio::spawn(async move {
-                let (mut reader, mut writer) = connection.into_split();
+                let (mut reader, mut writer) = split_io(stream);
                 let mut size = [0u8; 4];
                 if reader.read_exact(&mut size).await.is_err() {
                     error!("failed to register user");
@@ -160,17 +186,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             Packet::Join(_) => (), // joining is handled in the reader thread
                             Packet::GetPort => {
                                 let _ = GEPORT_MESSAGE.send_async(&mut writer).await;
+                                // see tokio_rustls docs for reason for flushing
+                                let _ = writer.flush().await;
                             }
                             Packet::Kick(u) => {
                                 let user_guard = user.read().await;
                                 if user_guard.get_username() == u {
                                     drop(user_guard);
                                     let _ = CANT_KICK_YOURSELF.send_async(&mut writer).await;
+                                    let _ = writer.flush().await;
                                     continue;
                                 }
                                 if !matches!(user_guard.get_privilege(), UserPrivilege::Admin) {
                                     drop(user_guard);
                                     let _ = NO_KICK_PREMISION.send_async(&mut writer).await;
+                                    let _ = writer.flush().await;
                                     continue;
                                 }
                                 drop(user_guard);
@@ -184,6 +214,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                             &format!("{u} doesn't exist"),
                                         ));
                                         let _ = msg.send_async(&mut writer).await;
+                                        let _ = writer.flush().await;
                                         continue;
                                     }
                                 };
@@ -200,6 +231,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                         &format!("your privilege is now: {privilege}"),
                                     )));
                                     let _ = packet.send_async(&mut writer).await;
+                                    let _ = writer.flush().await;
                                     continue;
                                 }
                                 let username = u.as_ref().expect("we checked if u is None");
@@ -209,12 +241,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     // a user shouldn't be able to set his own privilege
                                     drop(user_guard);
                                     let _ = CANT_CHANGE_OWN_PRIVILEGE.send_async(&mut writer).await;
+                                    let _ = writer.flush().await;
                                     continue;
                                 }
                                 if !matches!(user_guard.get_privilege(), UserPrivilege::Admin) {
                                     drop(user_guard);
                                     let _ =
                                         NO_CHANGE_PRIVILEGE_PREMISION.send_async(&mut writer).await;
+                                    let _ = writer.flush().await;
                                     continue;
                                 }
                                 drop(user_guard);
@@ -228,6 +262,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                             &format!("{username} doesn't exist"),
                                         ));
                                         let _ = msg.send_async(&mut writer).await;
+                                        let _ = writer.flush().await;
                                         continue;
                                     }
                                 };
