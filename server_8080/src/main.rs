@@ -65,7 +65,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let file_cache = TempDir::with_prefix(format!("8080_MSG_CACHE_{}", pid()))?;
     let cache_path = Arc::new(file_cache.path().to_path_buf());
     #[cfg(debug_assertions)]
-    eprintln!("temp folder: {}", cache_path.as_ref().display());
+    info!("temp folder: {}", cache_path.as_ref().display());
     info!("connect to port: {port}");
     // conection listening thread
     tokio::spawn(async move {

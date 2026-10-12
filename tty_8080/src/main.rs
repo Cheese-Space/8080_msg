@@ -20,7 +20,7 @@ const MAIN_STACK: &str = "__MAIN_STACK__";
 static HOME_DIR: OnceLock<PathBuf> = OnceLock::new();
 macro_rules! version {
     () => {
-        "0.3.0 BETA"
+        "0.3.0"
     };
 }
 // avoids having to use format! for unexpected runtime errors
