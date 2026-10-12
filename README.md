@@ -1,7 +1,6 @@
 # 8080_msg: a self-hostable chat server written in rust  
 ⚠️ WARNING: 8080_msg is currently in beta, so don’t expect the best or most stable experience.  
-There is currently also ***++NO ENCRYPTION++*** of messages so use at your own risk.  
-  
+   
 Are you tired of Big Tech™ constantly leaking your valuable information and do you want to exactly know how your messages are processed and received?  
 And do you also just want to have a simple messaging app for yourself (and your friends)?  
 Well then the 8080_msg project is just for you!  
@@ -12,6 +11,7 @@ Well then the 8080_msg project is just for you!
 3. ability to make custom clients (not recomended for now)
 4. save chat history in a sqlite database
 5. everything in the 8080_msg project is and will always be free and open-source
+6. encryption over tls
   
 ## project overview  
 The 8080_msg project consists of 3 parts:  
@@ -26,13 +26,13 @@ It does everything you would expect a server to do like sending and receiving da
   
 3. **tty_8080**  
 And last but not least tty_8080: the official terminal client of the 8080_msg project.  
-The interface is kinda ugly for now, but will hopefully be updated in the future.  
+The interface is kinda ugly for now, but will hopefully be updated in the future.
 
 ## roadmap for v1.0.0 (new things may be added in the future)
 1. [x] working prototype of all the components
 2. [x] database for storing message history
 3. [x] file transfers 
-4. [ ] encryption with tls
+4. [x] encryption with tls
 5. [ ] add some sort of private messaging (i.e. a message only readable by one user)
 6. [ ] 'upgrade' the look of tty_8080
 7. [ ] some form of authentication
@@ -63,5 +63,5 @@ cd tty_8080
 ```
 And finally build/run via cargo:
 ``` bash
-cargo run -- --adress localhost --port 8080 --username cheese_space
+cargo run -- --adress localhost --port 8080 --username cheese_space --cert ca-cert.pem
 ```
