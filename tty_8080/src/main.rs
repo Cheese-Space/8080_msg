@@ -4,6 +4,7 @@
 #![deny(unsafe_code)]
 #![warn(clippy::unnecessary_safety_comment)]
 mod prelude;
+// TODO: move to the prelude and make it prettier
 use tokio::io::AsyncWriteExt;
 use tokio_rustls::{
     TlsConnector,
