@@ -4,6 +4,7 @@ mod prelude;
 mod static_messages;
 use crate::prelude::*;
 use crate::static_messages::*;
+use anyhow::anyhow;
 use std::env;
 use tokio::io::AsyncWriteExt;
 use tokio_rustls::TlsAcceptor;
@@ -28,11 +29,15 @@ fn username_check(username: &str) -> Result<(), &'static str> {
 type UserBook = Arc<Mutex<HashMap<Username, UnboundedSender<Arc<Packet>>>>>;
 type FileBook = Arc<RwLock<HashMap<String, String>>>;
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+async fn main() -> anyhow::Result<()> {
     let mut args = env::args();
     args.next();
-    let cert_file = args.next().expect("missing certificate file argument");
-    let private_key_file = args.next().expect("missing private key file argument");
+    let cert_file = args
+        .next()
+        .ok_or_else(|| anyhow!("missing certificate file argument!"))?;
+    let private_key_file = args
+        .next()
+        .ok_or_else(|| anyhow!("missing private key file argument!"))?;
     let config = Arc::new(
         ServerConfig::builder()
             .with_no_client_auth()
