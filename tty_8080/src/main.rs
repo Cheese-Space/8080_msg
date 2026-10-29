@@ -363,6 +363,8 @@ async fn actual_main() -> Result<(), Box<dyn std::error::Error>> {
             }
             let _ = writer.lock().await.flush().await;
             if let Packet::Exit = msg {
+                // notifies the server that we're exiting
+                let _ = writer.lock().await.shutdown().await;
                 cb_cink
                     .send(Box::new(|siv| siv.quit()))
                     .expect("cursive cb channel should only close when program terminates");
@@ -405,6 +407,8 @@ async fn actual_main() -> Result<(), Box<dyn std::error::Error>> {
             .full_width()
             .with_name("main"),
     );
+    #[cfg(debug_assertions)]
+    siv.add_global_callback('~', |siv| siv.toggle_debug_console());
     siv.run();
     Ok(())
 }
