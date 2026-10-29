@@ -104,9 +104,11 @@ impl fmt::Display for Metadata {
         Ok(())
     }
 }
+#[cfg(feature = "async")]
 trait PathBufExt: Sized {
     async fn is_dir_async(self) -> io::Result<bool>;
 }
+#[cfg(feature = "async")]
 impl PathBufExt for &mut PathBuf {
     #[inline]
     async fn is_dir_async(self) -> io::Result<bool> {
