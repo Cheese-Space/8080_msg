@@ -104,6 +104,15 @@ impl fmt::Display for Metadata {
         Ok(())
     }
 }
+trait PathBufExt: Sized {
+    async fn is_dir_async(self) -> io::Result<bool>;
+}
+impl PathBufExt for &mut PathBuf {
+    #[inline]
+    async fn is_dir_async(self) -> io::Result<bool> {
+       async_fs::metadata(self).await.map(|m| m.is_dir())
+   }
+}
 /// A file send by a user.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct UserFile {
@@ -188,14 +197,13 @@ impl UserFile {
         path: &mut PathBuf,
         file_name: Option<&str>,
     ) -> io::Result<()> {
-        if !path.is_dir() {
+        if !path.is_dir_async().await? {
             return Err(ErrorKind::NotADirectory.into());
         }
         path.push(file_name.unwrap_or(&self.metadata.name));
         let mut file = AsyncFile::create_new(path).await?;
         file.write_all(&self.data).await?;
         file.flush().await?;
-        // we have to turn it into a std File, because tokio's File struct doesn't have a set_times function
         let times = AsyncTimes::new();
         let accsessed = self.metadata.accessed.unwrap_or_else(|| SystemTime::now());
         let modified = self
