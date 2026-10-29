@@ -1,6 +1,6 @@
 # 8080_msg: a self-hostable chat server written in rust  
 ⚠️ WARNING: 8080_msg is currently in beta, so don’t expect the best or most stable experience.  
-   
+
 Are you tired of Big Tech™ constantly leaking your valuable information and do you want to exactly know how your messages are processed and received?  
 And do you also just want to have a simple messaging app for yourself (and your friends)?  
 Well then the 8080_msg project is just for you!  
@@ -27,6 +27,12 @@ It does everything you would expect a server to do like sending and receiving da
 3. **tty_8080**  
 And last but not least tty_8080: the official terminal client of the 8080_msg project.  
 The interface is kinda ugly for now, but will hopefully be updated in the future.
+
+## certificates
+You need tls certificates if you want to use tty_8080 and server_8080.  
+The server needs a certificate and a private key, and the clients need one shared certificate.  
+The certificates of the clients and the server also need to be signed by the same [CA](https://en.wikipedia.org/wiki/Certificate_authority).  
+You can use [Let's Encrypt](https://letsencrypt.org) for example to acquire certificates.
 
 ## roadmap for v1.0.0 (new things may be added in the future)
 1. [x] working prototype of all the components
