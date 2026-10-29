@@ -110,8 +110,8 @@ trait PathBufExt: Sized {
 impl PathBufExt for &mut PathBuf {
     #[inline]
     async fn is_dir_async(self) -> io::Result<bool> {
-       async_fs::metadata(self).await.map(|m| m.is_dir())
-   }
+        async_fs::metadata(self).await.map(|m| m.is_dir())
+    }
 }
 /// A file send by a user.
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -404,7 +404,7 @@ impl Packet {
     }
     /// Get the inner [`Message`] of a [`Packet`].
     ///
-    /// Returns None if self ≠ Packet::Msg or Packet::File.
+    /// Returns None if self ≠ Packet::Msg or Packet::File or Packet::FileMsg.
     pub fn get_inner_msg(&self) -> Option<&Message> {
         match self {
             Packet::Msg(msg) => Some(msg),
