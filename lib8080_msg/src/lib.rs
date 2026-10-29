@@ -20,7 +20,7 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::time::SystemTime;
 #[cfg(feature = "async")]
-use tokio::fs::{self as async_fs, File as AsyncFile};
+use tokio::fs::{self as async_fs, File as AsyncFile, FileTimes as AsyncTimes};
 #[cfg(feature = "async")]
 use tokio::io::AsyncWriteExt;
 // could change into a TinyStr in the future
@@ -196,14 +196,14 @@ impl UserFile {
         file.write_all(&self.data).await?;
         file.flush().await?;
         // we have to turn it into a std File, because tokio's File struct doesn't have a set_times function
-        let file = file.into_std().await;
-        let times = FileTimes::new();
+        let times = AsyncTimes::new();
         let accsessed = self.metadata.accessed.unwrap_or_else(|| SystemTime::now());
         let modified = self
             .metadata
             .last_modified
             .unwrap_or_else(|| SystemTime::now());
-        file.set_times(times.set_accessed(accsessed).set_modified(modified))?;
+        file.set_times(times.set_accessed(accsessed).set_modified(modified))
+            .await?;
         Ok(())
     }
     /// Calculate the sha256 hash of the file.
