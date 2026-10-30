@@ -4,16 +4,6 @@
 #![deny(unsafe_code)]
 #![warn(clippy::unnecessary_safety_comment)]
 mod prelude;
-// TODO: move to the prelude and make it prettier
-use tokio::io::AsyncWriteExt;
-use tokio_rustls::{
-    TlsConnector,
-    rustls::{
-        ClientConfig, RootCertStore,
-        pki_types::{CertificateDer, ServerName, pem::PemObject},
-    },
-};
-
 use crate::prelude::*;
 #[deprecated]
 const MAIN_STACK: &str = "__MAIN_STACK__";
