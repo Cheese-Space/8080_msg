@@ -123,7 +123,7 @@ fn fatal_error<S: ErrorString>(text: S) -> impl FnOnce(&mut Cursive) {
 fn should_display_text(split_text: &[&str]) -> bool {
     let len = split_text.len();
     // we know that the message is never empty, so index zero should always be valid
-    match *split_text.get(0).expect(debug_msg!(slice empty)) {
+    match *split_text.first().expect(debug_msg!(slice empty)) {
         "/exit" | "/getport" | "/file" => false,
         "/kick" | "/fetch" if len == 2 => false,
         "/set_privilege" if len == 3 => false,
@@ -313,7 +313,7 @@ async fn actual_main() -> Result<(), Box<dyn std::error::Error>> {
                                     Some(m) => m,
                                     None => return,
                                 };
-                                let Some(sender) = sender.lock().unwrap().take() else {
+                                let Some(sender) = sender.lock().expect("should only reach once, therefore never be None").take() else {
                                     unreachable!("should only be called once");
                                 };
                                 sender.send((path, message)).expect("reciever shouldn't have closed yet");
