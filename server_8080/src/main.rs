@@ -4,12 +4,6 @@ mod prelude;
 mod static_messages;
 use crate::prelude::*;
 use crate::static_messages::*;
-use anyhow::anyhow;
-use std::env;
-use tokio::io::AsyncWriteExt;
-use tokio_rustls::TlsAcceptor;
-use tokio_rustls::rustls::ServerConfig;
-use tokio_rustls::rustls::pki_types::{CertificateDer, PrivateKeyDer, pem::PemObject};
 // TODO: add timeout to tls handshake
 /// checks if a username is valid
 // you normaly shoudn't return string literals as an Err, but this is only used in one place anyway so it is fine
@@ -28,6 +22,7 @@ fn username_check(username: &str) -> Result<(), &'static str> {
 // TODO: look if we can change Mutex with RwLock?
 type UserBook = Arc<Mutex<HashMap<Username, UnboundedSender<Arc<Packet>>>>>;
 type FileBook = Arc<RwLock<HashMap<String, String>>>;
+type ThreadBook = Arc<Mutex<Vec<AbortHandle>>>;
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let mut args = env::args();
@@ -69,11 +64,13 @@ async fn main() -> anyhow::Result<()> {
     }).await?;
     let file_cache = TempDir::with_prefix(format!("8080_MSG_CACHE_{}", pid()))?;
     let cache_path = Arc::new(file_cache.path().to_path_buf());
+    let thread_book: ThreadBook = Arc::new(Mutex::new(Vec::new()));
+    let thread_clone = Arc::clone(&thread_book);
     #[cfg(debug_assertions)]
     info!("temp folder: {}", cache_path.as_ref().display());
     info!("connect to port: {port}");
     // conection listening thread
-    tokio::spawn(async move {
+    let handle = tokio::spawn(async move {
         loop {
             let (connection, _) = match listener.accept().await {
                 Ok(c) => c,
@@ -92,10 +89,13 @@ async fn main() -> anyhow::Result<()> {
             let user_book = Arc::clone(&user_book);
             let file_book = Arc::clone(&file_book);
             let cache_path = Arc::clone(&cache_path);
+            let thread_book = Arc::clone(&thread_clone);
+            let thread_clone = Arc::clone(&thread_book);
             let db_client = db_client.clone();
             // each connection gets its own thread could be prone to ddos atacks maybe?
             // todo: maker user limit configurable
-            tokio::spawn(async move {
+            let handle = tokio::spawn(async move {
+                let thread_book = thread_clone;
                 let (mut reader, mut writer) = split_io(stream);
                 let mut size = [0u8; 4];
                 if reader.read_exact(&mut size).await.is_err() {
@@ -175,7 +175,7 @@ async fn main() -> anyhow::Result<()> {
                 }
                 let p_clone = Arc::clone(&cache_path);
                 let fi_book_clone = Arc::clone(&file_book);
-                tokio::spawn(async move {
+                let handle = tokio::spawn(async move {
                     let cache_path = p_clone;
                     let user_book = u_book_clone;
                     let user = u_clone;
@@ -314,6 +314,7 @@ async fn main() -> anyhow::Result<()> {
                         }
                     }
                 });
+                thread_book.lock().await.push(handle.abort_handle());
                 // read loop
                 loop {
                     // this means the user disconnected suddenly
@@ -428,9 +429,14 @@ async fn main() -> anyhow::Result<()> {
                     }
                 }
             });
+            thread_book.lock().await.push(handle.abort_handle());
         }
     });
+    thread_book.lock().await.push(handle.abort_handle());
     // the main thread waits for control-c
     ctrl_c().await?;
+    for handle in thread_book.lock().await.iter() {
+        handle.abort();
+    }
     Ok(())
 }
