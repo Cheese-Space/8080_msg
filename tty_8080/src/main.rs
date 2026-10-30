@@ -1,10 +1,12 @@
 // TODO: add some local file cache for fetching files
+// TODO: add gracefull shutdown via AbortHandle
 // use expect when you know the result to always be Ok (PROVIDE A REASON)
 #![deny(clippy::unwrap_used)]
 #![deny(unsafe_code)]
 #![warn(clippy::unnecessary_safety_comment)]
 mod prelude;
 use crate::prelude::*;
+// TODO: remove this, this is useless now
 #[deprecated]
 const MAIN_STACK: &str = "__MAIN_STACK__";
 static HOME_DIR: OnceLock<PathBuf> = OnceLock::new();
