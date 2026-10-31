@@ -6,7 +6,7 @@ use crate::prelude::*;
 use crate::static_messages::*;
 // TODO: add timeout to tls handshake
 /// checks if a username is valid
-// you normaly shoudn't return string literals as an Err, but this is only used in one place anyway so it is fine
+// you normally shouldn't  return string literals as an Err, but this is only used in one place anyway so it is fine
 fn username_check(username: &str) -> Result<(), &'static str> {
     match username.trim() {
         "" => Err("invalid username: an empty username isn't allowed"),
@@ -69,7 +69,7 @@ async fn main() -> anyhow::Result<()> {
     #[cfg(debug_assertions)]
     info!("temp folder: {}", cache_path.as_ref().display());
     info!("connect to port: {port}");
-    // conection listening thread
+    // connection listening thread
     let handle = tokio::spawn(async move {
         loop {
             let (connection, _) = match listener.accept().await {
@@ -92,7 +92,7 @@ async fn main() -> anyhow::Result<()> {
             let thread_book = Arc::clone(&thread_clone);
             let thread_clone = Arc::clone(&thread_book);
             let db_client = db_client.clone();
-            // each connection gets its own thread could be prone to ddos atacks maybe?
+            // each connection gets its own thread could be prone to ddos attacks maybe?
             // todo: maker user limit configurable
             let handle = tokio::spawn(async move {
                 let thread_book = thread_clone;
@@ -182,10 +182,10 @@ async fn main() -> anyhow::Result<()> {
                     let file_book = fi_book_clone;
                     while let Some(packet) = rx.recv().await {
                         #[cfg(debug_assertions)]
-                        info!("recieved packet: {:?}", *packet);
+                        info!("received packet: {:?}", *packet);
                         match packet.as_ref() {
                             Packet::Exit => {
-                                // the read thread will auto remove on failiure anyway so we only have to break the write loop
+                                // the read thread will auto remove on failure anyway so we only have to break the write loop
                                 break;
                             }
                             Packet::Join(_) => (), // joining is handled in the reader thread
@@ -241,7 +241,7 @@ async fn main() -> anyhow::Result<()> {
                                 }
                                 let username = u.as_ref().expect("we checked if u is None");
                                 let user_guard = user.read().await;
-                                // we check the username first, because if the privilege of the user is not equal to admin, then his message wouldnt show up
+                                // we check the username first, because if the privilege of the user is not equal to admin, then his message wouldn't show up
                                 if username == user_guard.get_username() {
                                     // a user shouldn't be able to set his own privilege
                                     drop(user_guard);
@@ -331,21 +331,21 @@ async fn main() -> anyhow::Result<()> {
                     if let Err(e) = reader.read_exact(&mut data).await {
                         let user = user.read().await;
                         let username = user.get_username();
-                        error!("lost connection to cliet: {e}\nwill remove: {username}");
+                        error!("lost connection to client: {e}\nwill remove: {username}");
                         let mut user_book = user_book.lock().await;
                         user_book.remove(username);
                     }
                     let mut data: Packet = match serde_json::from_slice(&data) {
                         Ok(d) => d,
                         Err(e) => {
-                            error!("user send malformed packet: {e}");
+                            error!("users send malformed packet: {e}");
                             continue;
                         }
                     };
                     // we use let _ = ... for handling errors, because it will only error if the writer closes
-                    // if it closes the thread will shut itself down automaticaly
+                    // if it closes the thread will shut itself down automatically
                     if let Some(m) = data.get_inner_msg() {
-                        // check if user has premision to send messages
+                        // check if user has permission to send messages
                         // we do not do this in the writer thread, so that the server and other users can still send messages to this users
                         if matches!(user.read().await.get_privilege(), UserPrivilege::ReadOnly) {
                             let _ = tx.send(Arc::clone(&NO_SEND_PREMISION));
@@ -420,7 +420,7 @@ async fn main() -> anyhow::Result<()> {
                             let _ = sender.send(packet_clone);
                         }
                     } else if let Packet::SetPrivilege(None, _) = data {
-                        // a user should'nt be able to set his own privilege
+                        // a user shouldn't be able to set his own privilege
                         let _ = tx.send(Arc::clone(&CANT_CHANGE_OWN_PRIVILEGE));
                         continue;
                     } else {
