@@ -1,5 +1,5 @@
 // TODO: add some local file cache for fetching files
-// TODO: add gracefull shutdown via AbortHandle
+// TODO: add graceful shutdown via AbortHandle
 // use expect when you know the result to always be Ok (PROVIDE A REASON)
 #![deny(clippy::unwrap_used)]
 #![deny(unsafe_code)]
@@ -73,9 +73,9 @@ impl CursiveStackExt for Cursive {
 #[derive(Parser)]
 #[command(version, about, long_about = None)]
 struct Args {
-    /// the ip adress of the server
+    /// the ip address of the server
     #[arg(short, long)]
-    adress: String,
+    address: String,
     /// the port to connect to
     #[arg(short, long)]
     port: u16,
@@ -119,7 +119,7 @@ fn fatal_error<S: ErrorString>(text: S) -> impl FnOnce(&mut Cursive) {
 /// Decides if the message provided should or shouldn't be displayed.
 ///
 /// # panics
-/// Panics if the slice is empty (altough this shouldn't happen anyway).
+/// Panics if the slice is empty (although this shouldn't happen anyway).
 fn should_display_text(split_text: &[&str]) -> bool {
     let len = split_text.len();
     // we know that the message is never empty, so index zero should always be valid
@@ -132,7 +132,7 @@ fn should_display_text(split_text: &[&str]) -> bool {
 }
 #[tokio::main]
 async fn main() -> ExitCode {
-    // error handeler
+    // error handler
     match actual_main().await {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
@@ -157,9 +157,9 @@ async fn actual_main() -> Result<(), Box<dyn std::error::Error>> {
             .with_no_client_auth(),
     );
     let connector = TlsConnector::from(config);
-    let adrr = format!("{}:{}", args.adress, args.port);
+    let adrr = format!("{}:{}", args.address, args.port);
     let stream = TcpStream::connect(&adrr).await?;
-    let adrr = ServerName::try_from(args.adress).expect("is valid");
+    let adrr = ServerName::try_from(args.address).expect("is valid");
     let (mut reader, mut writer) = io::split(connector.connect(adrr, stream).await?);
     Packet::Join(args.username.clone())
         .send_async(&mut writer)
@@ -173,7 +173,7 @@ async fn actual_main() -> Result<(), Box<dyn std::error::Error>> {
     tokio::spawn(async move {
         let mut len_buff = [0u8; 4];
         loop {
-            // only errors on early eof
+            // only errors on early EOF
             if reader.read_exact(&mut len_buff).await.is_err() {
                 cb_cink
                     .send(Box::new(fatal_error("error: lost connection with server")))
