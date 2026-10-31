@@ -342,6 +342,8 @@ async fn main() -> anyhow::Result<()> {
                             continue;
                         }
                     };
+                    // we use let _ = ... for handling errors, because it will only error if the writer closes
+                    // if it closes the thread will shut itself down automaticaly
                     if let Some(m) = data.get_inner_msg() {
                         // check if user has premision to send messages
                         // we do not do this in the writer thread, so that the server and other users can still send messages to this users
@@ -422,10 +424,7 @@ async fn main() -> anyhow::Result<()> {
                         let _ = tx.send(Arc::clone(&CANT_CHANGE_OWN_PRIVILEGE));
                         continue;
                     } else {
-                        // this means that the user has been kicked or the user exited
-                        if tx.send(Arc::new(data)).is_err() {
-                            return;
-                        }
+                        let _ = tx.send(Arc::new(data));
                     }
                 }
             });
