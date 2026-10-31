@@ -40,12 +40,12 @@ pub struct Message {
 }
 impl Message {
     #[inline]
-    /// Get a refrence to the username.
+    /// Get a reference to the username.
     pub fn get_username(&self) -> &str {
         &self.user
     }
     #[inline]
-    /// Get a refrence to the message.
+    /// Get a reference to the message.
     pub fn get_message(&self) -> &str {
         &self.msg
     }
@@ -248,11 +248,11 @@ impl FileTransfer {
     pub fn new(msg: Message, file: UserFile) -> Self {
         Self { msg, file }
     }
-    /// Get a refrence to the inner file.
+    /// Get a reference to the inner file.
     pub fn get_file(&self) -> &UserFile {
         &self.file
     }
-    /// Get a refrence to the inner message.
+    /// Get a reference to the inner message.
     pub fn get_message(&self) -> &Message {
         &self.msg
     }
@@ -318,7 +318,7 @@ impl fmt::Display for UserPrivilege {
 pub struct User {
     /// The name of the user.
     name: Username,
-    /// The privilege of the user, see [`UserPirvilege`].
+    /// The privilege of the user, see [`UserPrivilege`].
     privilege: UserPrivilege,
 }
 impl User {
@@ -333,7 +333,7 @@ impl User {
         self.privilege = privilege;
     }
     #[inline]
-    /// Get a refrence to the username of the user.
+    /// Get a reference to the username of the user.
     pub fn get_username(&self) -> &str {
         &self.name
     }
