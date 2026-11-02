@@ -18,6 +18,28 @@ fn username_check(username: &str) -> Result<(), &'static str> {
         _ => Ok(()),
     }
 }
+macro_rules! log_and {
+    ($and:tt, "error", $($expr:tt)* $(,)?) => {{
+        log::error!($($expr)*);
+        $and;
+    }};
+    ($and:tt, "warn", $($expr:tt)* $(,)?) => {{
+        log::warn!($($expr)*);
+        $and;
+    }};
+    ($and:tt, "info", $($expr:tt)* $(,)?) => {{
+        log::info!($($expr)*);
+        $and;
+    }};
+    ($and:tt, "debug", $($expr:tt)* $(,)?) => {{
+        log::debug!($($expr)*);
+        $and;
+    }};
+    ($and:tt, "trace", $($expr:tt)* $(,)?) => {{
+        log::trace!($($expr)*);
+        $and;
+    }};
+}
 // it sends an Arc, so we don't have to clone when sending a Message to all writer thread
 // TODO: look if we can change Mutex with RwLock?
 type UserBook = Arc<Mutex<HashMap<Username, UnboundedSender<Arc<Packet>>>>>;
@@ -75,15 +97,13 @@ async fn main() -> anyhow::Result<()> {
             let (connection, _) = match listener.accept().await {
                 Ok(c) => c,
                 Err(e) => {
-                    error!("failed to connect to user: {e}");
-                    return;
+                    log_and!(return, "error", "failed to connect to user: {e}");
                 }
             };
             let stream = match acceptor.accept(connection).await {
                 Ok(s) => s,
                 Err(e) => {
-                    error!("failed to connect to user: {e}");
-                    return;
+                    log_and!(return, "error", "failed to connect to user: {e}");
                 }
             };
             let user_book = Arc::clone(&user_book);
@@ -93,33 +113,31 @@ async fn main() -> anyhow::Result<()> {
             let thread_clone = Arc::clone(&thread_book);
             let db_client = db_client.clone();
             // each connection gets its own thread could be prone to ddos attacks maybe?
-            // todo: maker user limit configurable
+            // TODO: maker user limit configurable
             let handle = tokio::spawn(async move {
                 let thread_book = thread_clone;
                 let (mut reader, mut writer) = split_io(stream);
-                let mut size = [0u8; 4];
-                if reader.read_exact(&mut size).await.is_err() {
-                    error!("failed to register user");
-                    return;
-                }
-                let size_to_read = u32::from_be_bytes(size) as usize;
-                let mut data = vec![0u8; size_to_read];
+                // reads an big-endian u32
+                let size = match reader.read_u32().await {
+                    Ok(s) => s as usize,
+                    Err(e) => log_and!(return, "error", "failed to register user: {e}"),
+                };
+                let mut data = vec![0u8; size];
                 if let Err(e) = reader.read_exact(&mut data).await {
-                    error!("failed to register user: {e}");
-                    return;
+                    log_and!(return, "error", "failed to register user: {e}");
                 }
                 let data: Packet = match serde_json::from_slice(&data) {
                     Ok(d) => d,
-                    Err(e) => {
-                        error!("failed to register user: invalid request: {e}");
-                        return;
-                    }
+                    Err(e) => log_and!(
+                        return,
+                        "error",
+                        "failed to register user: invalid request: {e}"
+                    ),
                 };
                 // first packet should always be the join request, if not the user won't be registered
                 let user = if let Packet::Join(u) = data {
                     if let Err(e) = username_check(&u) {
-                        error!("failed to register user: {e}");
-                        return;
+                        log_and!(return, "error", "failed to register user: {e}");
                     }
                     let mut user = User::new(&u, None);
                     let user_book = user_book.lock().await;
@@ -128,15 +146,19 @@ async fn main() -> anyhow::Result<()> {
                     }
                     let username = user.get_username();
                     if user_book.get(username).is_some() {
-                        error!(
-                            "failed to register user: an user with the same username alreaady exists"
+                        log_and!(
+                            return,
+                            "error",
+                            "failed to register user: an user with the same username already exists"
                         );
-                        return;
                     }
                     user
                 } else {
-                    error!("failed to register user: first request wasn't join request`");
-                    return;
+                    log_and!(
+                        return,
+                        "error",
+                        "failed to register user: first request wasn't join request`"
+                    );
                 };
                 let user = Arc::new(RwLock::new(user));
                 let (tx, mut rx) = mpsc::unbounded_channel();
@@ -317,17 +339,20 @@ async fn main() -> anyhow::Result<()> {
                 thread_book.lock().await.push(handle.abort_handle());
                 // read loop
                 loop {
-                    // this means the user disconnected suddenly
-                    if let Err(e) = reader.read_exact(&mut size).await {
-                        let user = user.read().await;
-                        let username = user.get_username();
-                        error!("failed to read packet: {e}\n removing: {username}");
-                        let mut user_book = user_book.lock().await;
-                        user_book.remove(username);
-                        return;
-                    }
-                    let size = u32::from_be_bytes(size);
-                    let mut data = vec![0u8; size as usize];
+                    // reads an big-endian u32
+                    let size = match reader.read_u32().await {
+                        Ok(s) => s as usize,
+                        // this means the user disconnected suddenly
+                        Err(e) => {
+                            let user = user.read().await;
+                            let username = user.get_username();
+                            error!("failed to read packet: {e}\n removing: {username}");
+                            let mut user_book = user_book.lock().await;
+                            user_book.remove(username);
+                            return;
+                        }
+                    };
+                    let mut data = vec![0u8; size];
                     if let Err(e) = reader.read_exact(&mut data).await {
                         let user = user.read().await;
                         let username = user.get_username();
@@ -337,10 +362,7 @@ async fn main() -> anyhow::Result<()> {
                     }
                     let mut data: Packet = match serde_json::from_slice(&data) {
                         Ok(d) => d,
-                        Err(e) => {
-                            error!("users send malformed packet: {e}");
-                            continue;
-                        }
+                        Err(e) => log_and!(continue, "error", "users send malformed packet: {e}"),
                     };
                     // we use let _ = ... for handling errors, because it will only error if the writer closes
                     // if it closes the thread will shut itself down automatically
@@ -370,8 +392,7 @@ async fn main() -> anyhow::Result<()> {
                                 }
                             }
                             Packet::FileMsg { .. } => {
-                                error!("error: user can't send FileMsg");
-                                continue;
+                                log_and!(continue, "error", "error: user can't send FileMsg");
                             }
                             Packet::File(f) => {
                                 let hash = f.get_file().sha256_hash();
