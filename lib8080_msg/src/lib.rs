@@ -359,8 +359,7 @@ pub enum Packet {
     /// client: asks the server to kick a certain person
     Kick(Username),
     /// client: asks the server to change the privilege of a certain user  
-    /// server: if None is specified for the user, change the privilege of the current user
-    SetPrivilege(Option<Username>, UserPrivilege),
+    SetPrivilege(Username, UserPrivilege),
     /// client + server: sends a message to a client or the server
     Msg(Message),
     /// client + server: send a file to a recipient
@@ -421,8 +420,9 @@ impl From<&Packet> for Vec<u8> {
     ///
     /// Useful if you want to use another async runtime than Tokio.
     fn from(value: &Packet) -> Self {
-        let contents = serde_json::to_string(value).unwrap().as_bytes().to_vec();
+        let contents = serde_json::to_vec(value).unwrap();
         let mut header = (contents.len() as u32).to_be_bytes().to_vec();
+        header.reserve(contents.len());
         for i in contents {
             header.push(i);
         }
