@@ -56,6 +56,11 @@ impl Message {
             msg: msg.to_string(),
         }
     }
+    /// Create a new message from owned Strings.
+    #[inline]
+    pub fn new_from_owned(user: String, msg: String) -> Self {
+        Self { user, msg }
+    }
 }
 
 impl fmt::Display for Message {
