@@ -389,7 +389,7 @@ pub enum Packet {
 impl Packet {
     /// Send a [`Packet`] to a writer.
     pub fn send<W: Write>(&self, stream: &mut W) -> io::Result<()> {
-        let data_as_bytes = Vec::from(self);
+        let data_as_bytes = Vec::try_from(self).map_err(|error| io::Error::other(error))?;
         stream.write_all(&data_as_bytes)
     }
     /// Send a [`Packet`] to an async writer.
@@ -405,7 +405,7 @@ impl Packet {
     #[cfg(feature = "async")]
     #[cfg_attr(docsrs, doc(cfg(feature = "async")))]
     pub async fn send_async<W: AsyncWriteExt + Unpin>(&self, stream: &mut W) -> io::Result<()> {
-        let data_as_bytes = Vec::from(self);
+        let data_as_bytes = Vec::try_from(self).map_err(|error| io::Error::other(error))?;
         stream.write_all(&data_as_bytes).await
     }
     /// Get the inner [`Message`] of a [`Packet`].
@@ -420,18 +420,16 @@ impl Packet {
         }
     }
 }
-impl From<&Packet> for Vec<u8> {
-    /// Convert a [`Packet`] to a [`Vec<u8>`](https://doc.rust-lang.org/std/vec/struct.Vec.html).
-    ///
-    /// Useful if you want to use another async runtime than Tokio.
-    fn from(value: &Packet) -> Self {
-        let contents = serde_json::to_vec(value).unwrap();
+impl TryFrom<&Packet> for Vec<u8> {
+    type Error = serde_json::Error;
+    fn try_from(value: &Packet) -> Result<Self, Self::Error> {
+        let contents = serde_json::to_vec(value)?;
         let mut header = (contents.len() as u32).to_be_bytes().to_vec();
         header.reserve(contents.len());
         for i in contents {
             header.push(i);
         }
-        header
+        Ok(header)
     }
 }
 #[cfg(test)]
