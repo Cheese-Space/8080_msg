@@ -439,7 +439,7 @@ mod tests {
     #[test]
     fn send_test() {
         let packet = Packet::GetPort;
-        let packet_as_bytes = Vec::from(&packet);
+        let packet_as_bytes = Vec::try_from(&packet).unwrap();
         let mut should_be_same_as_packet: Vec<u8> = Vec::with_capacity(packet_as_bytes.len());
         packet.send(&mut should_be_same_as_packet).unwrap();
         assert_eq!(should_be_same_as_packet, packet_as_bytes);
