@@ -65,7 +65,7 @@ impl Query {
         use lib::Packet;
         // we handle Join here, so that we can check if the user has been kicked bellow
         // if we didn't check for join here, then this function would wrongfully return Error::GotKicked when you would try to join
-        if let Packet::Join(name) = self.packet {
+        if let Packet::Join(ref name) = self.packet {
             let hash: ID = Sha256::digest(name.as_bytes()).into();
             let privilege = if state.user_book.is_empty() {
                 Some(lib::UserPrivilege::Admin)
@@ -78,7 +78,7 @@ impl Query {
             match entry {
                 Entry::Occupied(_) => return Err(Error::UserAlreadyExits),
                 Entry::Vacant(_) => {
-                    entry.insert_entry(lib::User::new(&name, privilege));
+                    entry.insert_entry(lib::User::new(name, privilege));
                     return Ok(Vec::new());
                 }
             }
@@ -99,7 +99,7 @@ impl Query {
                 ));
                 Ok(Vec::try_from(&packet)?)
             }
-            Packet::Kick(n) => {
+            Packet::Kick(ref n) => {
                 let hash: ID = Sha256::digest(n.as_bytes()).into();
                 if hash == self.id {
                     return Err(Error::CantKickYourself);
@@ -114,7 +114,7 @@ impl Query {
                 Ok(Vec::new())
             }
             // TODO: tell the other user they have been de/promoted via a private msg
-            Packet::SetPrivilege(n, p) => {
+            Packet::SetPrivilege(ref n, p) => {
                 let hash: ID = Sha256::digest(n.as_bytes()).into();
                 if !matches!(user.get_privilege(), lib::UserPrivilege::Admin) {
                     return Err(Error::NoPerm);
@@ -126,7 +126,7 @@ impl Query {
                     .user_book
                     .get_mut(&hash)
                     .ok_or(Error::UserDoesntExist)?;
-                user.set_privilege(p);
+                other_user.set_privilege(p);
                 Ok(Vec::new())
             }
             Packet::Msg(_) | Packet::FileMsg { .. } => {
@@ -135,11 +135,11 @@ impl Query {
                 Ok(Vec::new())
             }
             Packet::File(_) => unreachable!("handled in reader thread"),
-            Packet::FetchFile { id } => {
+            Packet::FetchFile { ref id } => {
                 let actual_name = state
                     .file_book
-                    .get(&id)
-                    .ok_or_else(|| io::ErrorKind::NotFound.into())?;
+                    .get(id)
+                    .ok_or_else(|| io::Error::from(io::ErrorKind::NotFound))?;
                 let mut file = lib::UserFile::new_async(
                     &static_messages::CACHE_DIR
                         .get()
