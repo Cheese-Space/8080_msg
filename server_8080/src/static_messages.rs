@@ -1,11 +1,13 @@
 use lib8080_msg::Message;
 use lib8080_msg::Packet;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::LazyLock;
 use std::sync::OnceLock;
 // contains static messages used by server_8080 (along with the PORT static)
 // all future static messages must be appended here
 pub static PORT: OnceLock<u16> = OnceLock::new();
+pub static CACHE_DIR: OnceLock<PathBuf> = OnceLock::new();
 pub static GEPORT_MESSAGE: LazyLock<Packet> = LazyLock::new(|| {
     Packet::Msg(Message::new(
         "server",
