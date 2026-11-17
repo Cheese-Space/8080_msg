@@ -1,6 +1,11 @@
 #![deny(clippy::unwrap_used)]
 #![deny(unused_mut)]
+mod db;
+mod macros;
 mod prelude;
+mod query;
+mod reciever;
+mod sender;
 mod static_messages;
 use crate::prelude::*;
 use crate::static_messages::*;
