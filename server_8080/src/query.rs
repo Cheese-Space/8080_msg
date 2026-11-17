@@ -1,4 +1,4 @@
-use crate::{sender, static_messages};
+use crate::sender;
 use lib8080_msg as lib;
 use sha2::{Digest, Sha256};
 use std::collections::hash_map::Entry;
@@ -95,7 +95,7 @@ impl Query {
             Packet::GetPort => {
                 let packet = Packet::Msg(lib::Message::new_from_owned(
                     "server".into(),
-                    format!("port = {}", static_messages::PORT.get().expect("is set")),
+                    format!("port = {}", state.port),
                 ));
                 Ok(Vec::try_from(&packet)?)
             }
@@ -140,13 +140,7 @@ impl Query {
                     .file_book
                     .get(id)
                     .ok_or_else(|| io::Error::from(io::ErrorKind::NotFound))?;
-                let mut file = lib::UserFile::new_async(
-                    &static_messages::CACHE_DIR
-                        .get()
-                        .expect("should be set")
-                        .join(id),
-                )
-                .await?;
+                let mut file = lib::UserFile::new_async(&state.cache_path.join(id)).await?;
                 file.set_name(actual_name.as_str());
                 let packet = Packet::File(lib::FileTransfer::new(lib::Message::new("", ""), file));
                 Ok(Vec::try_from(&packet)?)
