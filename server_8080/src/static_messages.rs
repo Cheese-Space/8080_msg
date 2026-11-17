@@ -1,3 +1,4 @@
+#![deprecated]
 use lib8080_msg::Message;
 use lib8080_msg::Packet;
 use std::path::PathBuf;
