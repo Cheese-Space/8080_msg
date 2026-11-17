@@ -1,6 +1,6 @@
 use lib8080_msg as lib;
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::Path;
 use std::sync::Arc;
 use tokio::sync::broadcast;
 use tokio::sync::mpsc;
@@ -14,4 +14,6 @@ pub struct State {
     pub receiver: mpsc::Receiver<lib::Packet>,
     // a tokio broadcast internally clones the data, so we use Arc to prevent slowdowns from cloning
     pub msg_sender: broadcast::Sender<Arc<lib::Packet>>,
+    pub cache_path: &'static Path,
+    pub port: u16,
 }
