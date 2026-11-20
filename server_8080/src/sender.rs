@@ -1,3 +1,4 @@
+use crate::query;
 use lib8080_msg as lib;
 use std::collections::HashMap;
 use std::path::Path;
@@ -11,7 +12,7 @@ pub struct State {
     pub user_book: HashMap<ID, lib::User>,
     // left is hash, right is actual name
     pub file_book: HashMap<String, String>,
-    pub receiver: mpsc::Receiver<lib::Packet>,
+    pub receiver: mpsc::Receiver<query::Query>,
     // a tokio broadcast internally clones the data, so we use Arc to prevent slowdowns from cloning
     pub msg_sender: broadcast::Sender<Arc<lib::Packet>>,
     pub cache_path: &'static Path,
