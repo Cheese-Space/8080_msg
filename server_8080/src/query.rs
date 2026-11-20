@@ -49,6 +49,12 @@ impl fmt::Display for Error {
         }
     }
 }
+impl From<Error> for lib::Message {
+    #[inline]
+    fn from(value: Error) -> Self {
+        lib::Message::new_from_owned("server".into(), value.to_string())
+    }
+}
 impl StdError for Error {
     fn source(&self) -> Option<&(dyn StdError + 'static)> {
         match self {
