@@ -49,7 +49,15 @@ impl fmt::Display for Error {
         }
     }
 }
-impl StdError for Error {}
+impl StdError for Error {
+    fn source(&self) -> Option<&(dyn StdError + 'static)> {
+        match self {
+            Self::Io(e) => Some(e),
+            Self::Serde(e) => Some(e),
+            _ => None,
+        }
+    }
+}
 pub struct Query {
     packet: lib::Packet,
     sender: oneshot::Sender<Result<Vec<u8>>>,
