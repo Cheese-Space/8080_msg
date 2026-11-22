@@ -76,7 +76,7 @@ pub async fn handle_closed_client(sender: mpsc::Sender<query::Query>, uid: ID) {
 pub async fn register_user<R: AsyncReadExt + Unpin>(
     stream: &mut R,
     query_sender: &mpsc::Sender<query::Query>,
-) -> Result<ID, Error> {
+) -> Result<(ID, lib::Username), Error> {
     let size = stream.read_u32().await? as usize;
     let mut data = vec![0u8; size];
     stream.read_exact(&mut data).await?;
@@ -85,7 +85,7 @@ pub async fn register_user<R: AsyncReadExt + Unpin>(
     };
     username_check(&uname)?;
     let uid: ID = Sha256::digest(&uname).into();
-    let (query, receiver) = query::Query::new(Packet::Join(uname), uid);
+    let (query, receiver) = query::Query::new(Packet::Join(uname.clone()), uid);
     // only way the recv is closed is when the query processing thread closes which only happens
     // when the program terminates, so we can just ignore the closed error
     let _ = query_sender.send(query).await;
@@ -93,5 +93,5 @@ pub async fn register_user<R: AsyncReadExt + Unpin>(
         .await
         .expect("should send something before closing")
         .map_err(|_| Error::UserAlreadyExist)?;
-    Ok(uid)
+    Ok((uid, uname))
 }

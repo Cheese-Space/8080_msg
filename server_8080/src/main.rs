@@ -108,10 +108,11 @@ async fn main() -> anyhow::Result<()> {
                 let db_client = db_clone;
                 let query_sender = sender_clone;
                 let mut msg_recv = recv_clone;
-                let uid = match client_handler::register_user(&mut stream, &query_sender).await {
-                    Ok(id) => id,
-                    Err(e) => log_and!(return, "error", "failed to register user: {e}"),
-                };
+                let (uid, uname) =
+                    match client_handler::register_user(&mut stream, &query_sender).await {
+                        Ok(id) => id,
+                        Err(e) => log_and!(return, "error", "failed to register user: {e}"),
+                    };
                 if let Err(e) = db_client
                     .send_n_most_recent(N_MOST_RECENT, &mut stream)
                     .await
@@ -139,7 +140,14 @@ async fn main() -> anyhow::Result<()> {
                     let _ = query_sender.send(query).await;
                     let result = recv.await.expect("should not close before sending");
                     let message = match msg_recv.try_recv() {
-                        Ok(m) => Vec::try_from(m.as_ref()).unwrap_or_default(),
+                        Ok(m) => {
+                            if m.get_inner_msg().expect("has msg").get_message() == uname {
+                                // client is responsible for displaying its own messages
+                                Vec::new()
+                            } else {
+                                Vec::try_from(m.as_ref()).unwrap_or_default()
+                            }
+                        }
                         Err(_) => Vec::new(),
                     };
                     let mut data = match result {
