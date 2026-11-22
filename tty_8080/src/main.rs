@@ -266,7 +266,7 @@ async fn actual_main() -> Result<(), Box<dyn std::error::Error>> {
                             continue;
                         }
                     };
-                    Packet::SetPrivilege(Some(split_message[1].to_string()), privilege)
+                    Packet::SetPrivilege(split_message[1].to_string(), privilege)
                 }
                 "/file" => {
                     // file transfers are handled in a different thread so we can still send messages if reading takes a long itme
