@@ -96,34 +96,10 @@ async fn main() -> anyhow::Result<()> {
                 let db_client = db_clone;
                 let query_sender = sender_clone;
                 let mut msg_recv = recv_clone;
-                // TODO: pull registering a user into its own function
-                let size = match stream.read_u32().await {
-                    Ok(s) => s as usize,
-                    Err(e) => {
-                        log_and!(return, "error", "failed to connect to user: {e}")
-                    }
+                let uid = match client_handler::register_user(&mut stream, &query_sender).await {
+                    Ok(id) => id,
+                    Err(e) => log_and!(return, "error", "failed to register user: {e}"),
                 };
-                let mut data = vec![0u8; size];
-                if let Err(e) = stream.read_exact(&mut data).await {
-                    log_and!(return, "error", "failed to connect to user: {e}");
-                }
-                let Ok(Packet::Join(uname)) = serde_json::from_slice(&data) else {
-                    log_and!(return, "error", "first request wasn't join request");
-                };
-                if let Err(e) = client_handler::username_check(&uname) {
-                    log_and!(return, "error", "{e}");
-                }
-                let uid: ID = Sha256::digest(&uname).into();
-                let (query, receiver) = query::Query::new(Packet::Join(uname), uid);
-                // only way the recv is closed is when the query processing thread closes which only happens
-                // when the program terminates, so we can just ignore the closed error
-                let _ = query_sender.send(query).await;
-                if let Err(e) = receiver
-                    .await
-                    .expect("other half shouldn't close before sending something")
-                {
-                    log_and!(return, "error", "{e}");
-                }
                 if let Err(e) = db_client
                     .send_n_most_recent(N_MOST_RECENT, &mut stream)
                     .await
