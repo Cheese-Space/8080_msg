@@ -155,10 +155,10 @@ impl Query {
                 if matches!(user.get_privilege(), lib::UserPrivilege::ReadOnly) {
                     return Err(Error::NoPerm);
                 }
-                if let Packet::Msg(ref m) = self.packet {
-                    if let Err(e) = state.db_pool.add_record(m).await {
-                        log::warn!("failed to insert message into db: {e}");
-                    }
+                if let Packet::Msg(ref m) = self.packet
+                    && let Err(e) = state.db_pool.add_record(m).await
+                {
+                    log::warn!("failed to insert message into db: {e}");
                 }
                 // Packet::Exit is just a dummy value, using replace avoids cloning (which avoids sys calls)
                 let packet = mem::replace(&mut self.packet, Packet::Exit);

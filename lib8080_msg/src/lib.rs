@@ -79,7 +79,7 @@ pub struct Metadata {
 impl Metadata {
     /// Get the file extension.
     pub fn extension(&self) -> Option<&str> {
-        self.file_extension.as_ref().map(|s| s.as_str())
+        self.file_extension.as_deref()
     }
     /// Get the file name.
     pub fn name(&self) -> &str {
@@ -110,13 +110,13 @@ impl fmt::Display for Metadata {
     }
 }
 #[cfg(feature = "async")]
-trait PathBufExt: Sized {
-    async fn is_dir_async(self) -> io::Result<bool>;
+trait PathBufExt {
+    async fn is_dir_async(&self) -> io::Result<bool>;
 }
 #[cfg(feature = "async")]
-impl PathBufExt for &mut PathBuf {
+impl PathBufExt for PathBuf {
     #[inline]
-    async fn is_dir_async(self) -> io::Result<bool> {
+    async fn is_dir_async(&self) -> io::Result<bool> {
         async_fs::metadata(self).await.map(|m| m.is_dir())
     }
 }
@@ -186,12 +186,9 @@ impl UserFile {
         let mut file = File::create_new(path)?;
         file.write_all(&self.data)?;
         let times = FileTimes::new();
-        let accsessed = self.metadata.accessed.unwrap_or_else(|| SystemTime::now());
-        let modified = self
-            .metadata
-            .last_modified
-            .unwrap_or_else(|| SystemTime::now());
-        file.set_times(times.set_accessed(accsessed).set_modified(modified))?;
+        let accessed = self.metadata.accessed.unwrap_or_else(SystemTime::now);
+        let modified = self.metadata.last_modified.unwrap_or_else(SystemTime::now);
+        file.set_times(times.set_accessed(accessed).set_modified(modified))?;
         Ok(())
     }
     #[cfg(feature = "async")]
@@ -212,12 +209,9 @@ impl UserFile {
         file.write_all(&self.data).await?;
         file.flush().await?;
         let times = AsyncTimes::new();
-        let accsessed = self.metadata.accessed.unwrap_or_else(|| SystemTime::now());
-        let modified = self
-            .metadata
-            .last_modified
-            .unwrap_or_else(|| SystemTime::now());
-        file.set_times(times.set_accessed(accsessed).set_modified(modified))
+        let accessed = self.metadata.accessed.unwrap_or_else(SystemTime::now);
+        let modified = self.metadata.last_modified.unwrap_or_else(SystemTime::now);
+        file.set_times(times.set_accessed(accessed).set_modified(modified))
             .await?;
         Ok(())
     }
@@ -389,7 +383,7 @@ pub enum Packet {
 impl Packet {
     /// Send a [`Packet`] to a writer.
     pub fn send<W: Write>(&self, stream: &mut W) -> io::Result<()> {
-        let data_as_bytes = Vec::try_from(self).map_err(|error| io::Error::other(error))?;
+        let data_as_bytes = Vec::try_from(self).map_err(io::Error::other)?;
         stream.write_all(&data_as_bytes)
     }
     /// Send a [`Packet`] to an async writer.
@@ -405,7 +399,7 @@ impl Packet {
     #[cfg(feature = "async")]
     #[cfg_attr(docsrs, doc(cfg(feature = "async")))]
     pub async fn send_async<W: AsyncWriteExt + Unpin>(&self, stream: &mut W) -> io::Result<()> {
-        let data_as_bytes = Vec::try_from(self).map_err(|error| io::Error::other(error))?;
+        let data_as_bytes = Vec::try_from(self).map_err(io::Error::other)?;
         stream.write_all(&data_as_bytes).await
     }
     /// Get the inner [`Message`] of a [`Packet`].
