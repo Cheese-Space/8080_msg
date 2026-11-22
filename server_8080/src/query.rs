@@ -175,7 +175,9 @@ impl Query {
                     Ok(_) => {
                         state.file_book.insert(hash, file.name().to_string());
                         let transfer = mem::take(transfer);
-                        Vec::try_from(&transfer.into_file_msg())?
+                        let msg = Arc::new(transfer.into_file_msg());
+                        let _ = state.msg_sender.send(msg);
+                        Vec::new()
                     }
                     Err(e) => match e.kind() {
                         ErrorKind::AlreadyExists => {
