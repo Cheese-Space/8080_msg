@@ -1,3 +1,4 @@
+use crate::db::DbExt;
 use lib8080_msg as lib;
 use sha2::{Digest, Sha256};
 use std::collections::hash_map::{Entry, HashMap};
@@ -83,6 +84,7 @@ impl Query {
     }
     async fn process(&mut self, state: &mut HandlerState) -> Result<Vec<u8>> {
         use lib::Packet;
+        log::info!("received packet: {:?}", self.packet);
         // we handle Join here, so that we can check if the user has been kicked bellow
         // if we didn't check for join here, then this function would wrongfully return Error::GotKicked when you would try to join
         if let Packet::Join(ref name) = self.packet {
@@ -153,6 +155,11 @@ impl Query {
                 if matches!(user.get_privilege(), lib::UserPrivilege::ReadOnly) {
                     return Err(Error::NoPerm);
                 }
+                if let Packet::Msg(ref m) = self.packet {
+                    if let Err(e) = state.db_pool.add_record(m).await {
+                        log::warn!("failed to insert message into db: {e}");
+                    }
+                }
                 // Packet::Exit is just a dummy value, using replace avoids cloning (which avoids sys calls)
                 let packet = mem::replace(&mut self.packet, Packet::Exit);
                 let _ = state.msg_sender.send(Arc::new(packet));
@@ -212,4 +219,5 @@ pub struct HandlerState {
     pub msg_sender: broadcast::Sender<Arc<lib::Packet>>,
     pub cache_path: &'static Path,
     pub port: u16,
+    pub db_pool: async_sqlite::Pool,
 }
