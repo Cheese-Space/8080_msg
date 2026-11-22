@@ -5,6 +5,7 @@ use std::path::Path;
 use std::sync::Arc;
 use tokio::sync::broadcast;
 use tokio::sync::mpsc;
+use crate::query;
 // is a sha256 hash
 type ID = [u8; 32];
 #[derive(Debug)]
