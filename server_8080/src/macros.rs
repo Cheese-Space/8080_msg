@@ -1,4 +1,5 @@
 #[macro_export]
+#[clippy::format_args]
 macro_rules! log_and {
     ($and:tt, "error", $($expr:tt)* $(,)?) => {{
         ::log::error!($($expr)*);
