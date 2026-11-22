@@ -150,6 +150,9 @@ impl Query {
                 Ok(Vec::new())
             }
             Packet::Msg(_) | Packet::FileMsg { .. } => {
+                if matches!(user.get_privilege(), lib::UserPrivilege::ReadOnly) {
+                    return Err(Error::NoPerm);
+                }
                 // Packet::Exit is just a dummy value, using replace avoids cloning (which avoids sys calls)
                 let packet = mem::replace(&mut self.packet, Packet::Exit);
                 let _ = state.msg_sender.send(Arc::new(packet));
