@@ -3,16 +3,28 @@
 mod client_handler;
 mod db;
 mod macros;
-mod prelude;
 mod query;
-mod static_messages;
 use crate::db::DbExt;
-use crate::prelude::*;
-use crate::static_messages::*;
-use sha2::Digest;
-use sha2::Sha256;
+use anyhow::anyhow;
+use async_sqlite::PoolBuilder;
+use lib8080_msg::*;
+use log::LevelFilter;
+use std::collections::HashMap;
+use std::env::{self, home_dir};
 use std::path::Path;
+use std::process::id as pid;
+use std::sync::Arc;
+use temp_dir::TempDir;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::net::TcpListener;
+use tokio::signal::ctrl_c;
+use tokio::sync::Mutex;
 use tokio::sync::{broadcast, mpsc};
+use tokio::task::AbortHandle;
+use tokio_rustls::TlsAcceptor;
+use tokio_rustls::rustls::ServerConfig;
+use tokio_rustls::rustls::pki_types::pem::PemObject;
+use tokio_rustls::rustls::pki_types::{CertificateDer, PrivateKeyDer};
 const N_MOST_RECENT: u32 = 30;
 // sha256 hash
 type ID = [u8; 32];
@@ -68,8 +80,8 @@ async fn main() -> anyhow::Result<()> {
     let thread_clone = Arc::clone(&thread_book);
     let pool_clone = db_client.clone();
     #[cfg(debug_assertions)]
-    info!("temp folder: {}", cache_path.display());
-    info!("connect to port: {port}");
+    log::info!("temp folder: {}", cache_path.display());
+    log::info!("connect to port: {port}");
     // connection listening thread
     let listener_handle = tokio::spawn(async move {
         let thread_book = thread_clone;
@@ -146,8 +158,20 @@ async fn main() -> anyhow::Result<()> {
         }
     });
     // query handler
-    let query_handle = tokio::spawn(async {
-        todo!();
+    let query_handle = tokio::spawn(async move {
+        let mut state = query::HandlerState {
+            user_book: HashMap::new(),
+            file_book: HashMap::new(),
+            receiver: query_recv,
+            msg_sender: msg_send,
+            cache_path,
+            port,
+            db_pool: db_client,
+        };
+        // can only be None when aborting the other threads
+        while let Some(query) = state.receiver.recv().await {
+            let _ = query.process_and_send(&mut state).await;
+        }
     });
     let mut thread_handle = thread_book.lock().await;
     thread_handle.push(query_handle.abort_handle());
