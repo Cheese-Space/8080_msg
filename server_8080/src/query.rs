@@ -1,12 +1,13 @@
-use crate::sender;
 use lib8080_msg as lib;
 use sha2::{Digest, Sha256};
-use std::collections::hash_map::Entry;
+use std::collections::hash_map::{Entry, HashMap};
 use std::error::Error as StdError;
 use std::fmt;
-use std::io;
+use std::io::{self, ErrorKind};
+use std::mem;
+use std::path::Path;
 use std::sync::Arc;
-use tokio::sync::oneshot;
+use tokio::sync::{broadcast, mpsc, oneshot};
 /// is a sha256 id.
 type ID = [u8; 32];
 type Result<T, E = Error> = ::core::result::Result<T, E>;
@@ -76,11 +77,11 @@ impl Query {
         (query, receiver)
     }
     #[inline]
-    pub async fn process_and_send(self, state: &mut sender::State) -> Result<()> {
+    pub async fn process_and_send(mut self, state: &mut HandlerState) -> Result<()> {
         let data = self.process(state).await;
         self.send(data)
     }
-    async fn process(&self, state: &mut sender::State) -> Result<Vec<u8>> {
+    async fn process(&mut self, state: &mut HandlerState) -> Result<Vec<u8>> {
         use lib::Packet;
         // we handle Join here, so that we can check if the user has been kicked bellow
         // if we didn't check for join here, then this function would wrongfully return Error::GotKicked when you would try to join
@@ -149,11 +150,38 @@ impl Query {
                 Ok(Vec::new())
             }
             Packet::Msg(_) | Packet::FileMsg { .. } => {
-                let packet = self.packet.clone();
+                // Packet::Exit is just a dummy value, using replace avoids cloning (which avoids sys calls)
+                let packet = mem::replace(&mut self.packet, Packet::Exit);
                 let _ = state.msg_sender.send(Arc::new(packet));
                 Ok(Vec::new())
             }
-            Packet::File(_) => unreachable!("handled in reader thread"),
+            Packet::File(ref mut transfer) => {
+                let file = transfer.get_file();
+                let hash = file.sha256_hash();
+                let msg = match file
+                    .write_to_disk_async(&mut state.cache_path.to_path_buf(), Some(file.name()))
+                    .await
+                {
+                    Ok(_) => {
+                        state.file_book.insert(hash, file.name().to_string());
+                        let transfer = mem::take(transfer);
+                        Vec::try_from(&transfer.into_file_msg())?
+                    }
+                    Err(e) => match e.kind() {
+                        ErrorKind::AlreadyExists => {
+                            Vec::try_from(&Packet::Msg(lib::Message::new_from_owned(
+                                "server".into(),
+                                format!(
+                                    "requested file already exist:\nname: {}\nhash: {hash}",
+                                    file.name()
+                                ),
+                            )))?
+                        }
+                        _ => return Err(e.into()),
+                    },
+                };
+                Ok(msg)
+            }
             Packet::FetchFile { ref id } => {
                 let actual_name = state
                     .file_book
@@ -170,4 +198,15 @@ impl Query {
     fn send(self, data: Result<Vec<u8>>) -> Result<()> {
         self.sender.send(data).map_err(|_| Error::RecvClosed)
     }
+}
+/// variables used by the query handler
+pub struct HandlerState {
+    pub user_book: HashMap<ID, lib::User>,
+    // left is hash, right is actual name
+    pub file_book: HashMap<String, String>,
+    pub receiver: mpsc::Receiver<Query>,
+    // a tokio broadcast internally clones the data, so we use Arc to prevent slowdowns from cloning
+    pub msg_sender: broadcast::Sender<Arc<lib::Packet>>,
+    pub cache_path: &'static Path,
+    pub port: u16,
 }

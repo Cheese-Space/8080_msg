@@ -28,7 +28,7 @@ use tokio::io::AsyncWriteExt;
 ///
 /// It is not guaranteed that this type will always be a String.
 pub type Username = String;
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Default, Clone)]
 /// Represents a message.
 pub struct Message {
     /// The user who send the message.
@@ -68,7 +68,7 @@ impl fmt::Display for Message {
         write!(f, "{}", self.msg)
     }
 }
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
 /// File metadata.
 pub struct Metadata {
     file_extension: Option<String>,
@@ -121,7 +121,7 @@ impl PathBufExt for &mut PathBuf {
     }
 }
 /// A file send by a user.
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
 pub struct UserFile {
     data: Vec<u8>,
     metadata: Metadata,
@@ -238,7 +238,7 @@ impl DerefMut for UserFile {
     }
 }
 /// A message with a file.
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
 pub struct FileTransfer {
     msg: Message,
     file: UserFile,

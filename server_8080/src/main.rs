@@ -1,54 +1,33 @@
 #![deny(clippy::unwrap_used)]
 #![deny(unused_mut)]
+mod client_handler;
 mod db;
 mod macros;
 mod prelude;
 mod query;
-mod reciever;
-mod sender;
 mod static_messages;
+use crate::db::DbExt;
 use crate::prelude::*;
 use crate::static_messages::*;
-// TODO: add timeout to tls handshake
-/// checks if a username is valid
-// you normally shouldn't  return string literals as an Err, but this is only used in one place anyway so it is fine
-fn username_check(username: &str) -> Result<(), &'static str> {
-    match username.trim() {
-        "" => Err("invalid username: an empty username isn't allowed"),
-        "me" => Err("invalid username: me"),
-        "server" => Err("invalid username: server"),
-        with_space if with_space.contains(' ') => {
-            Err("invalid username: a username isn't allowed to have spaces")
+use sha2::Digest;
+use sha2::Sha256;
+use std::path::Path;
+use tokio::sync::{broadcast, mpsc};
+const N_MOST_RECENT: u32 = 30;
+// sha256 hash
+type ID = [u8; 32];
+trait AbortExt {
+    /// abort all currently running threads
+    fn abort_all(&self);
+}
+impl AbortExt for [AbortHandle] {
+    fn abort_all(&self) {
+        for handle in self.iter() {
+            handle.abort();
         }
-        _ => Ok(()),
     }
 }
-macro_rules! log_and {
-    ($and:tt, "error", $($expr:tt)* $(,)?) => {{
-        log::error!($($expr)*);
-        $and;
-    }};
-    ($and:tt, "warn", $($expr:tt)* $(,)?) => {{
-        log::warn!($($expr)*);
-        $and;
-    }};
-    ($and:tt, "info", $($expr:tt)* $(,)?) => {{
-        log::info!($($expr)*);
-        $and;
-    }};
-    ($and:tt, "debug", $($expr:tt)* $(,)?) => {{
-        log::debug!($($expr)*);
-        $and;
-    }};
-    ($and:tt, "trace", $($expr:tt)* $(,)?) => {{
-        log::trace!($($expr)*);
-        $and;
-    }};
-}
-// it sends an Arc, so we don't have to clone when sending a Message to all writer thread
-// TODO: look if we can change Mutex with RwLock?
-type UserBook = Arc<Mutex<HashMap<Username, UnboundedSender<Arc<Packet>>>>>;
-type FileBook = Arc<RwLock<HashMap<String, String>>>;
+// TODO: add timeout to tls handshake
 type ThreadBook = Arc<Mutex<Vec<AbortHandle>>>;
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -73,31 +52,28 @@ async fn main() -> anyhow::Result<()> {
     pretty_env_logger::formatted_builder()
         .filter_level(LevelFilter::Info)
         .init();
-    // user_book keeps track of users
-    let user_book: UserBook = Arc::new(Mutex::new(HashMap::new()));
-    // and file book keeps track of file names
-    let file_book: FileBook = Arc::new(RwLock::new(HashMap::new()));
     let listener = TcpListener::bind("0.0.0.0:0").await?;
     let port = listener.local_addr()?.port();
-    PORT.set(port).expect("PORT should be unset");
     let mut db_path = home_dir().unwrap_or_default();
     db_path.push("8080_msg.db");
-    let db_client = PoolBuilder::new()
-        .path(format!("{}", db_path.display()))
-        .open()
-        .await?;
+    let db_client = PoolBuilder::new().path(&db_path).open().await?;
     db_client.conn(|conn| {
         conn.execute("CREATE TABLE IF NOT EXISTS Messages(id INTEGER PRIMARY KEY, user TEXT NOT NULL, message TEXT NOT NULL)", ())
     }).await?;
     let file_cache = TempDir::with_prefix(format!("8080_MSG_CACHE_{}", pid()))?;
-    let cache_path = Arc::new(file_cache.path().to_path_buf());
+    let cache_path: &'static Path = Box::leak(file_cache.path().to_path_buf().into_boxed_path());
     let thread_book: ThreadBook = Arc::new(Mutex::new(Vec::new()));
+    let (msg_send, msg_recv) = broadcast::channel::<Arc<Packet>>(50);
+    let (query_send, query_recv) = mpsc::channel::<query::Query>(50);
     let thread_clone = Arc::clone(&thread_book);
+    let pool_clone = db_client.clone();
     #[cfg(debug_assertions)]
-    info!("temp folder: {}", cache_path.as_ref().display());
+    info!("temp folder: {}", cache_path.display());
     info!("connect to port: {port}");
     // connection listening thread
-    let handle = tokio::spawn(async move {
+    let listener_handle = tokio::spawn(async move {
+        let thread_book = thread_clone;
+        let db_client = pool_clone;
         loop {
             let (connection, _) = match listener.accept().await {
                 Ok(c) => c,
@@ -105,363 +81,104 @@ async fn main() -> anyhow::Result<()> {
                     log_and!(return, "error", "failed to connect to user: {e}");
                 }
             };
-            let stream = match acceptor.accept(connection).await {
+            let mut stream = match acceptor.accept(connection).await {
                 Ok(s) => s,
                 Err(e) => {
                     log_and!(return, "error", "failed to connect to user: {e}");
                 }
             };
-            let user_book = Arc::clone(&user_book);
-            let file_book = Arc::clone(&file_book);
-            let cache_path = Arc::clone(&cache_path);
-            let thread_book = Arc::clone(&thread_clone);
-            let thread_clone = Arc::clone(&thread_book);
-            let db_client = db_client.clone();
+            let sender_clone = query_send.clone();
+            let recv_clone = msg_recv.resubscribe();
+            let db_clone = db_client.clone();
             // each connection gets its own thread could be prone to ddos attacks maybe?
             // TODO: maker user limit configurable
             let handle = tokio::spawn(async move {
-                let thread_book = thread_clone;
-                let (mut reader, mut writer) = split_io(stream);
-                // reads an big-endian u32
-                let size = match reader.read_u32().await {
+                let db_client = db_clone;
+                let query_sender = sender_clone;
+                let mut msg_recv = recv_clone;
+                // TODO: pull registering a user into its own function
+                let size = match stream.read_u32().await {
                     Ok(s) => s as usize,
-                    Err(e) => log_and!(return, "error", "failed to register user: {e}"),
+                    Err(e) => {
+                        log_and!(return, "error", "failed to connect to user: {e}")
+                    }
                 };
                 let mut data = vec![0u8; size];
-                if let Err(e) = reader.read_exact(&mut data).await {
-                    log_and!(return, "error", "failed to register user: {e}");
+                if let Err(e) = stream.read_exact(&mut data).await {
+                    log_and!(return, "error", "failed to connect to user: {e}");
                 }
-                let data: Packet = match serde_json::from_slice(&data) {
-                    Ok(d) => d,
-                    Err(e) => log_and!(
-                        return,
-                        "error",
-                        "failed to register user: invalid request: {e}"
-                    ),
+                let Ok(Packet::Join(uname)) = serde_json::from_slice(&data) else {
+                    log_and!(return, "error", "first request wasn't join request");
                 };
-                // first packet should always be the join request, if not the user won't be registered
-                let user = if let Packet::Join(u) = data {
-                    if let Err(e) = username_check(&u) {
-                        log_and!(return, "error", "failed to register user: {e}");
-                    }
-                    let mut user = User::new(&u, None);
-                    let user_book = user_book.lock().await;
-                    if user_book.is_empty() {
-                        user.set_privilege(UserPrivilege::Admin);
-                    }
-                    let username = user.get_username();
-                    if user_book.get(username).is_some() {
-                        log_and!(
-                            return,
-                            "error",
-                            "failed to register user: an user with the same username already exists"
-                        );
-                    }
-                    user
-                } else {
-                    log_and!(
-                        return,
-                        "error",
-                        "failed to register user: first request wasn't join request`"
-                    );
-                };
-                let user = Arc::new(RwLock::new(user));
-                let (tx, mut rx) = mpsc::unbounded_channel();
-                let tx_clone = tx.clone();
-                let mut user_book_guard = user_book.lock().await;
-                let user_read_guard = user.read().await;
-                user_book_guard.insert(user_read_guard.get_username().to_string(), tx_clone);
-                info!("user '{}' joined", user_read_guard.get_username());
-                drop(user_book_guard);
-                drop(user_read_guard);
-                let u_book_clone = Arc::clone(&user_book);
-                let u_clone = Arc::clone(&user);
-                // these clones are moved into the function which sends the 30 most recent messages to the client
-                let u_clone_2 = Arc::clone(&user);
-                let tx_clone_2 = tx.clone();
-                // send at most 30 most recent messages to the client
-                if let Err(e) = db_client.conn(move |conn| {
-                    let user = u_clone_2;
-                    let tx = tx_clone_2;
-                    let mut stmt = conn.prepare("SELECT user, message FROM Messages WHERE id > (SELECT MAX(id) - 30 FROM Messages)")?;
-                    let packets = stmt.query_map((), |row| {
-                        let mut username: String = row.get("user")?;
-                        if username.as_str() == user.blocking_read().get_username() {
-                            username = String::from("me");
-                        }
-                        let message: String = row.get("message")?;
-                        Ok(Packet::Msg(Message::new(&username, &message)))
-                    })?;
-                    for packet in packets {
-                        let packet = packet?;
-                        let _ = tx.send(Arc::new(packet));
-                    }
-                    Ok(())
-                }).await {
-                    error!("failed to query database: {e}");
+                if let Err(e) = client_handler::username_check(&uname) {
+                    log_and!(return, "error", "{e}");
                 }
-                let p_clone = Arc::clone(&cache_path);
-                let fi_book_clone = Arc::clone(&file_book);
-                let handle = tokio::spawn(async move {
-                    let cache_path = p_clone;
-                    let user_book = u_book_clone;
-                    let user = u_clone;
-                    let file_book = fi_book_clone;
-                    while let Some(packet) = rx.recv().await {
-                        #[cfg(debug_assertions)]
-                        info!("received packet: {:?}", *packet);
-                        match packet.as_ref() {
-                            Packet::Exit => {
-                                // the read thread will auto remove on failure anyway so we only have to break the write loop
-                                break;
-                            }
-                            Packet::Join(_) => (), // joining is handled in the reader thread
-                            Packet::GetPort => {
-                                let _ = GEPORT_MESSAGE.send_async(&mut writer).await;
-                                // see tokio_rustls docs for reason for flushing
-                                let _ = writer.flush().await;
-                            }
-                            Packet::Kick(u) => {
-                                let user_guard = user.read().await;
-                                if user_guard.get_username() == u {
-                                    drop(user_guard);
-                                    let _ = CANT_KICK_YOURSELF.send_async(&mut writer).await;
-                                    let _ = writer.flush().await;
-                                    continue;
-                                }
-                                if !matches!(user_guard.get_privilege(), UserPrivilege::Admin) {
-                                    drop(user_guard);
-                                    let _ = NO_KICK_PREMISION.send_async(&mut writer).await;
-                                    let _ = writer.flush().await;
-                                    continue;
-                                }
-                                drop(user_guard);
-                                let mut user_book = user_book.lock().await;
-                                let sender = match user_book.remove(u) {
-                                    Some(s) => s,
-                                    None => {
-                                        drop(user_book);
-                                        let msg = Packet::Msg(Message::new(
-                                            "server",
-                                            &format!("{u} doesn't exist"),
-                                        ));
-                                        let _ = msg.send_async(&mut writer).await;
-                                        let _ = writer.flush().await;
-                                        continue;
-                                    }
-                                };
-                                let _ = sender.send(Arc::clone(&KICK_MESSAGE));
-                                // exit makes the write loop stop
-                                let _ = sender.send(Arc::new(Packet::Exit));
-                            }
-                            Packet::SetPrivilege(u, p) => {
-                                if u.is_none() {
-                                    let privilege = *p;
-                                    user.write().await.set_privilege(privilege);
-                                    let packet = Arc::new(Packet::Msg(Message::new(
-                                        "server",
-                                        &format!("your privilege is now: {privilege}"),
-                                    )));
-                                    let _ = packet.send_async(&mut writer).await;
-                                    let _ = writer.flush().await;
-                                    continue;
-                                }
-                                let username = u.as_ref().expect("we checked if u is None");
-                                let user_guard = user.read().await;
-                                // we check the username first, because if the privilege of the user is not equal to admin, then his message wouldn't show up
-                                if username == user_guard.get_username() {
-                                    // a user shouldn't be able to set his own privilege
-                                    drop(user_guard);
-                                    let _ = CANT_CHANGE_OWN_PRIVILEGE.send_async(&mut writer).await;
-                                    let _ = writer.flush().await;
-                                    continue;
-                                }
-                                if !matches!(user_guard.get_privilege(), UserPrivilege::Admin) {
-                                    drop(user_guard);
-                                    let _ =
-                                        NO_CHANGE_PRIVILEGE_PREMISION.send_async(&mut writer).await;
-                                    let _ = writer.flush().await;
-                                    continue;
-                                }
-                                drop(user_guard);
-                                let user_book = user_book.lock().await;
-                                let sender = match user_book.get(username) {
-                                    Some(s) => s,
-                                    None => {
-                                        drop(user_book);
-                                        let msg = Packet::Msg(Message::new(
-                                            "server",
-                                            &format!("{username} doesn't exist"),
-                                        ));
-                                        let _ = msg.send_async(&mut writer).await;
-                                        let _ = writer.flush().await;
-                                        continue;
-                                    }
-                                };
-                                let _ = sender.send(Arc::new(Packet::SetPrivilege(None, *p)));
-                            }
-                            Packet::Msg(_) | Packet::FileMsg { .. } => {
-                                let msg = packet.as_ref();
-                                if msg
-                                    .get_inner_msg()
-                                    .expect("should contain a message")
-                                    .get_username()
-                                    == user.read().await.get_username()
-                                {
-                                    // the client is responsible for displaying its own messages
-                                    continue;
-                                }
-                                let _ = msg.send_async(&mut writer).await;
-                            }
-                            Packet::File(_) => (), /*handeled in reader thread*/
-                            Packet::FetchFile { id } => {
-                                let file_guard = file_book.read().await;
-                                let name = match file_guard.get(id) {
-                                    Some(n) => n.as_str(),
-                                    None => {
-                                        let _ = INVALID_HASH.send_async(&mut writer).await;
-                                        continue;
-                                    }
-                                };
-                                let name = name.to_string();
-                                let path = cache_path.join(id);
-                                drop(file_guard);
-                                let packet = match UserFile::new_async(&path).await {
-                                    Ok(mut f) => {
-                                        f.set_name(&name);
-                                        Packet::File(FileTransfer::new(Message::new("", ""), f))
-                                    }
-                                    Err(e) => Packet::Msg(Message::new(
-                                        "server",
-                                        &format!("failed to fetch file: {id}: {e}"),
-                                    )),
-                                };
-                                let _ = packet.send_async(&mut writer).await;
-                            }
-                        }
-                    }
-                });
-                thread_book.lock().await.push(handle.abort_handle());
-                // read loop
+                let uid: ID = Sha256::digest(&uname).into();
+                let (query, receiver) = query::Query::new(Packet::Join(uname), uid);
+                // only way the recv is closed is when the query processing thread closes which only happens
+                // when the program terminates, so we can just ignore the closed error
+                let _ = query_sender.send(query).await;
+                if let Err(e) = receiver
+                    .await
+                    .expect("other half shouldn't close before sending something")
+                {
+                    log_and!(return, "error", "{e}");
+                }
+                if let Err(e) = db_client
+                    .send_n_most_recent(N_MOST_RECENT, &mut stream)
+                    .await
+                {
+                    log::warn!("failed to send {N_MOST_RECENT} most recent messages: {e}");
+                }
                 loop {
-                    // reads an big-endian u32
-                    let size = match reader.read_u32().await {
+                    let size = match stream.read_u32().await {
                         Ok(s) => s as usize,
-                        // this means the user disconnected suddenly
-                        Err(e) => {
-                            let user = user.read().await;
-                            let username = user.get_username();
-                            error!("failed to read packet: {e}\n removing: {username}");
-                            let mut user_book = user_book.lock().await;
-                            user_book.remove(username);
+                        Err(_) => {
+                            client_handler::handle_closed_client(query_sender, uid).await;
                             return;
                         }
                     };
                     let mut data = vec![0u8; size];
-                    if let Err(e) = reader.read_exact(&mut data).await {
-                        let user = user.read().await;
-                        let username = user.get_username();
-                        error!("lost connection to client: {e}\nwill remove: {username}");
-                        let mut user_book = user_book.lock().await;
-                        user_book.remove(username);
+                    if stream.read_exact(&mut data).await.is_err() {
+                        client_handler::handle_closed_client(query_sender, uid).await;
+                        return;
                     }
-                    let mut data: Packet = match serde_json::from_slice(&data) {
-                        Ok(d) => d,
-                        Err(e) => log_and!(continue, "error", "users send malformed packet: {e}"),
+                    let data: Packet = match serde_json::from_slice(&data) {
+                        Ok(p) => p,
+                        Err(e) => log_and!(continue, "warn", "invalid packet sent: {e}"),
                     };
-                    // we use let _ = ... for handling errors, because it will only error if the writer closes
-                    // if it closes the thread will shut itself down automatically
-                    if let Some(m) = data.get_inner_msg() {
-                        // check if user has permission to send messages
-                        // we do not do this in the writer thread, so that the server and other users can still send messages to this users
-                        if matches!(user.read().await.get_privilege(), UserPrivilege::ReadOnly) {
-                            let _ = tx.send(Arc::clone(&NO_SEND_PREMISION));
-                            continue;
-                        }
-                        match data {
-                            Packet::Msg(_) => {
-                                // add it to the database
-                                // we don't add it in the writer thread, because then server messages would be inserted into the db
-                                let user = m.get_username().to_string();
-                                let message = m.get_message().to_string();
-                                if let Err(e) = db_client
-                                    .conn(|conn| {
-                                        conn.execute(
-                                            "INSERT INTO Messages (user, message) VALUES (?, ?)",
-                                            [user, message],
-                                        )
-                                    })
-                                    .await
-                                {
-                                    error!("failed to insert message into db: {e}");
-                                }
-                            }
-                            Packet::FileMsg { .. } => {
-                                log_and!(continue, "error", "error: user can't send FileMsg");
-                            }
-                            Packet::File(f) => {
-                                let hash = f.get_file().sha256_hash();
-                                data = match f
-                                    .get_file()
-                                    .write_to_disk_async(&mut cache_path.join(""), Some(&hash))
-                                    .await
-                                {
-                                    Ok(_) => {
-                                        // only add it into our hashmap if the write didn't fail
-                                        file_book
-                                            .write()
-                                            .await
-                                            .insert(hash, f.get_file().name().to_string());
-                                        f.into_file_msg()
-                                    }
-                                    Err(e) => {
-                                        if let ErrorKind::AlreadyExists = e.kind() {
-                                            let file = f.into_user_file();
-                                            let _ = tx.send(Arc::new(Packet::Msg(Message::new(
-                                                "server",
-                                                &format!(
-                                                    "the file you tried to upload already exists:\nname: {}\nhash: {}",
-                                                    file.name(),
-                                                    hash
-                                                ),
-                                            ))));
-                                            continue;
-                                        } else {
-                                            Packet::Msg(Message::new(
-                                                "server",
-                                                &format!(
-                                                    "failed to write file to the server's file cache: {e}"
-                                                ),
-                                            ))
-                                        }
-                                    }
-                                };
-                            }
-                            _ => (),
-                        }
-                        let user_book = user_book.lock().await;
-                        let packet = Arc::new(data);
-                        for sender in user_book.values() {
-                            let packet_clone = Arc::clone(&packet);
-                            let _ = sender.send(packet_clone);
-                        }
-                    } else if let Packet::SetPrivilege(None, _) = data {
-                        // a user shouldn't be able to set his own privilege
-                        let _ = tx.send(Arc::clone(&CANT_CHANGE_OWN_PRIVILEGE));
-                        continue;
-                    } else {
-                        let _ = tx.send(Arc::new(data));
+                    let (query, recv) = query::Query::new(data, uid);
+                    let _ = query_sender.send(query).await;
+                    let result = recv.await.expect("should not close before sending");
+                    let message = match msg_recv.try_recv() {
+                        Ok(m) => Vec::try_from(m.as_ref()).unwrap_or_default(),
+                        Err(_) => Vec::new(),
+                    };
+                    let mut data = match result {
+                        Ok(d) => d,
+                        Err(e) => Vec::try_from(&Packet::Msg(e.into())).unwrap_or_default(),
+                    };
+                    data.reserve(message.len());
+                    for byte in message {
+                        data.push(byte);
                     }
+                    let _ = stream.write_all(&data).await;
+                    let _ = stream.flush().await;
                 }
             });
             thread_book.lock().await.push(handle.abort_handle());
         }
     });
-    thread_book.lock().await.push(handle.abort_handle());
+    // query handler
+    let query_handle = tokio::spawn(async {
+        todo!();
+    });
+    let mut thread_handle = thread_book.lock().await;
+    thread_handle.push(query_handle.abort_handle());
+    thread_handle.push(listener_handle.abort_handle());
+    drop(thread_handle);
     // the main thread waits for control-c
     ctrl_c().await?;
-    for handle in thread_book.lock().await.iter() {
-        handle.abort();
-    }
+    thread_book.lock().await.abort_all();
     Ok(())
 }
