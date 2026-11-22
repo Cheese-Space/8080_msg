@@ -52,7 +52,7 @@ impl fmt::Display for Error {
 impl From<Error> for lib::Message {
     #[inline]
     fn from(value: Error) -> Self {
-        lib::Message::new_from_owned("server".into(), value.to_string())
+        lib::Message::new_from_owned("server".into(), format!("error: {value}"))
     }
 }
 impl StdError for Error {
@@ -70,6 +70,11 @@ pub struct Query {
     id: ID,
 }
 impl Query {
+    pub fn new(packet: lib::Packet, id: ID) -> (Self, oneshot::Receiver<Result<Vec<u8>>>) {
+        let (sender, receiver) = oneshot::channel();
+        let query = Self { packet, sender, id };
+        (query, receiver)
+    }
     #[inline]
     pub async fn process_and_send(self, state: &mut sender::State) -> Result<()> {
         let data = self.process(state).await;
