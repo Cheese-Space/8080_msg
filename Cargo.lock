@@ -375,7 +375,7 @@ dependencies = [
  "cursive-macros",
  "enum-map",
  "enumset",
- "jiff",
+ "jiff 0.2.29",
  "lazy_static",
  "log",
  "num",
@@ -511,16 +511,26 @@ dependencies = [
 ]
 
 [[package]]
-name = "env_logger"
-version = "0.10.2"
+name = "env_filter"
+version = "2.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4cd405aab171cb85d6735e5c8d9db038c17d3ca007a4d2c25f337935c3d90580"
+checksum = "288efae2d67fb0418d01f837feb55c7a9cdc4c5db38d3dee91324a1c7ec6fd31"
 dependencies = [
- "humantime",
- "is-terminal",
  "log",
  "regex",
- "termcolor",
+]
+
+[[package]]
+name = "env_logger"
+version = "0.11.12"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "82bdfc6e01c305a3ea46ed815b06ac0b379d7c5eac588fa4464048d731c4dcdf"
+dependencies = [
+ "anstream",
+ "anstyle",
+ "env_filter",
+ "jiff 1.0.3",
+ "log",
 ]
 
 [[package]]
@@ -682,22 +692,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2304e00983f87ffb38b55b444b5e3b60a884b5d30c0fca7d82fe33449bbe55ea"
 
 [[package]]
-name = "hermit-abi"
-version = "0.5.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fc0fef456e4baa96da950455cd02c081ca953b141298e41db3fc7e36b1da849c"
-
-[[package]]
 name = "hex"
 version = "0.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7f24254aa9a54b5c858eaee2f5bccdb46aaf0e486a595ed5fd8f86ba55232a70"
-
-[[package]]
-name = "humantime"
-version = "2.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "135b12329e5e3ce057a9f972339ea52bc954fe1e9358ef27f95e89716fbc5424"
 
 [[package]]
 name = "hybrid-array"
@@ -713,17 +711,6 @@ name = "ident_case"
 version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b9e0384b61958566e926dc50660321d12159025e767c18e043daf26b70104c39"
-
-[[package]]
-name = "is-terminal"
-version = "0.4.17"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3640c1c38b8e4e43584d8df18be5fc6b0aa314ce6ebf51b53313d4306cca8e46"
-dependencies = [
- "hermit-abi",
- "libc",
- "windows-sys 0.61.2",
-]
 
 [[package]]
 name = "is_terminal_polyfill"
@@ -744,13 +731,36 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "34f877a98676d2fb664698d74cc6a51ce6c484ce8c770f05d0108ec9090aeb46"
 dependencies = [
  "defmt",
- "jiff-static",
+ "jiff-static 0.2.29",
  "jiff-tzdb-platform",
  "log",
  "portable-atomic",
  "portable-atomic-util",
  "serde_core",
  "windows-link",
+]
+
+[[package]]
+name = "jiff"
+version = "1.0.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "107f2e89536b6818514025f6787b0d94d819e54fe3b40365275fc753de485b3f"
+dependencies = [
+ "jiff-core",
+ "jiff-static 1.0.3",
+ "log",
+ "portable-atomic",
+ "portable-atomic-util",
+ "serde_core",
+]
+
+[[package]]
+name = "jiff-core"
+version = "1.0.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d44c923edf2bf456a982253f1a9ee1f6e89e421dffd0065d9b9a581da0def58f"
+dependencies = [
+ "log",
 ]
 
 [[package]]
@@ -762,6 +772,18 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.117",
+]
+
+[[package]]
+name = "jiff-static"
+version = "1.0.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4996f71e569e3a3e32b925c28ef8f0027dc30bb1d594b33eeda409eea185f5c8"
+dependencies = [
+ "jiff-core",
+ "proc-macro2",
+ "quote",
+ "syn 3.0.3",
 ]
 
 [[package]]
@@ -1013,9 +1035,9 @@ dependencies = [
 
 [[package]]
 name = "pretty_env_logger"
-version = "0.5.0"
+version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "865724d4dbe39d9f3dd3b52b88d859d66bcb2d6a0acfd5ea68a65fb66d4bdc1c"
+checksum = "adaec1cf216bffa4408c0c54050a8588408b293c4a9b0dbd22f442f6191e42ac"
 dependencies = [
  "env_logger",
  "log",
@@ -1405,15 +1427,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "016ef9739649996fcc983b9c588fe3d557cf216d4d98503ce1b057ab5a66d689"
 
 [[package]]
-name = "termcolor"
-version = "1.4.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "06794f8f6c5c898b3275aebefa6b8a1cb24cd2c6c79397ab15774837a0bc5755"
-dependencies = [
- "winapi-util",
-]
-
-[[package]]
 name = "thiserror"
 version = "2.0.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1623,15 +1636,6 @@ name = "winapi-i686-pc-windows-gnu"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ac3b87c63620426dd9b991e5ce0329eff545bccbbb34f3be09ff6fb6ab51b7b6"
-
-[[package]]
-name = "winapi-util"
-version = "0.1.11"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
-dependencies = [
- "windows-sys 0.61.2",
-]
 
 [[package]]
 name = "winapi-x86_64-pc-windows-gnu"
